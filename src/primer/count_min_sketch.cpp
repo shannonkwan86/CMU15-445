@@ -25,8 +25,15 @@ namespace bustub {
  * @throws std::invalid_argument if width or depth are zero.
  */
 template <typename KeyType>
-CountMinSketch<KeyType>::CountMinSketch(uint32_t width, uint32_t depth) : width_(width), depth_(depth) {
-  /** @TODO(student) Implement this function! */
+CountMinSketch<KeyType>::CountMinSketch(uint32_t width, uint32_t depth)
+    : width_(width), depth_(depth), counters_(static_cast<size_t>(width) * static_cast<size_t>(depth)) {
+  if (width_ == 0 || depth_ == 0) {
+    throw std::invalid_argument("CountMinSketch width and depth must be non-zero.");
+  }
+  // C++17: the default constructor of std::atomic does not guarantee zero-initialization.
+  for (auto &counter : counters_) {
+    counter.store(0, std::memory_order_relaxed);
+  }
 
   /** @fall2025 PLEASE DO NOT MODIFY THE FOLLOWING */
   // Initialize seeded hash functions

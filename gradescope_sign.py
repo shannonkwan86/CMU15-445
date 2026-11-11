@@ -81,10 +81,10 @@ def main():
         "I understand that if I violate the rules, I will be banned from using Gradescope.",
     )
     buffer += "\n"
-    buffer = request_sign(buffer, "Name:")
-    buffer = request_sign(buffer, "Affiliation (School/Company):")
-    buffer = request_sign(buffer, "Email:")
-    buffer = request_sign(buffer, "GitHub ID:")
+    buffer = request_sign(buffer, "Name:Shengheng Guan")
+    buffer = request_sign(buffer, "Affiliation (School/Company):Carnegie Mellon University")
+    buffer = request_sign(buffer, "Email:kobe83510@gmail.com")
+    buffer = request_sign(buffer, "GitHub ID:none")
     buffer = request_date(buffer, "Date:")
     buffer += "\n"
     buffer = request_yn(

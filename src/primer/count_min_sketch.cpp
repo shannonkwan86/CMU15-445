@@ -44,8 +44,12 @@ CountMinSketch<KeyType>::CountMinSketch(uint32_t width, uint32_t depth)
 }
 
 template <typename KeyType>
-CountMinSketch<KeyType>::CountMinSketch(CountMinSketch &&other) noexcept : width_(other.width_), depth_(other.depth_) {
-  /** @TODO(student) Implement this function! */
+CountMinSketch<KeyType>::CountMinSketch(CountMinSketch &&other) noexcept
+    : width_(other.width_), depth_(other.depth_), counters_(std::move(other.counters_)) {
+  hash_functions_.reserve(depth_);
+  for (size_t i = 0; i < depth_; i++) {
+    hash_functions_.push_back(this->HashFunction(i));
+  }
 }
 
 template <typename KeyType>

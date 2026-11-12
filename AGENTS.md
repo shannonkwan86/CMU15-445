@@ -68,21 +68,30 @@ make format && make check-format && make check-lint
 ### 6.1 分支模型（团队适配骨架）
 
 ```
-master / upstream      ← 只读上游镜像（cmu-db/bustub），永不直接提交、永不 push
- └── lab/p1-buffer-pool ← 每个 Lab 一条长分支（已完成任务都落在这里）
-      └── task/p1-t1-arc ← 可选：单个 Task 的短分支，用于试验/重构
+upstream                ← 只读上游镜像（cmu-db/bustub 的 master），永不直接提交、永不 push
+ └── dev                ← 集成分支：永远包含"所有已完成的 lab"；只接收 merge，不直接提交
+      ├── lab/p0-primer       ← 每个 Lab 一条长分支，一律从 dev 拉出
+      │    └── task/p0-t1-cms ← 可选：单个 Task 的短分支，用于试验/重构
+      └── lab/p1-buffer-pool  ← 从 dev 拉出（P0 已合入 dev）
 ```
 
 | 用途 | 命名 | 生命周期 |
 | --- | --- | --- |
+| 集成分支 | `dev`（本地分支，非 `master`/`main`） | 整个学期，只接收 merge |
 | 单个 Lab 主线 | `lab/p<N>-<topic>`（如 `lab/p2-btree`） | 整个 lab 周期 |
 | 单个 Task / 重构试验 | `task/p<N>-t<M>-<desc>`（如 `task/p1-t3-bpm-evict`） | 合回 lab 分支后删除 |
 | 里程碑 | tag `p<N>-done`（如 `p1-done`，autograder 满分时打） | 永久 |
 
-- `master` 只用于同步上游：`git fetch origin && git merge --ff-only origin/master`（如需要）。
+- 新 lab 分支一律从 `dev` 拉出：`git switch -c lab/p<N>-<topic> dev`。
+- lab 完成后合回集成分支并打 tag：
+  `git switch dev && git merge --no-ff lab/p<N>-<topic> && git tag -a p<N>-done -m "..."`。
+  用 `--no-ff` 保留 lab 分支边界，里程碑 tag 打在 `dev` 上。
+- `dev` 永不直接提交，只由 lab 分支 merge 前进。
+- 同步上游：`git fetch origin && git merge origin/master`（在 `dev` 上做；如需要）。
 - 短分支合回长分支用 `git merge --squash` 或 `rebase`，保持 lab 分支历史线性、可读。
 - **禁止** `push` 到 `origin`（它指向公开仓库 cmu-db/bustub，既无权限也是学术诚信问题）；
   要备份就推到自己的**私有** remote（`git remote add private <私有仓库>`）。
+- **禁止 fork**：public 仓库的 fork 强制 public 且无法转私有，等同公开发布实现（违反学术诚信）。
 
 ### 6.2 原子提交（Atomic Commits）
 

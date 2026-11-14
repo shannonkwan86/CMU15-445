@@ -33,9 +33,11 @@ struct FrameStatus {
   page_id_t page_id_;
   frame_id_t frame_id_;
   bool evictable_;
-  ArcStatus arc_status_;
+  ArcStatus arc_status_;  // "这个页现在在哪张 list"，枚举（MRU / MFU / MRU_GHOST / MFU_GHOST）
   FrameStatus(page_id_t pid, frame_id_t fid, bool ev, ArcStatus st)
       : page_id_(pid), frame_id_(fid), evictable_(ev), arc_status_(st) {}
+  std::list<frame_id_t>::iterator alive_it_;  // 活页在 mru_ / mfu_ 里的位置
+  std::list<page_id_t>::iterator ghost_it_;   // ghost 在 mru_ghost_ / mfu_ghost_ 里的位置
 };
 
 /**

@@ -28,7 +28,7 @@ enum class AccessType { Unknown = 0, Lookup, Scan, Index };
 
 enum class ArcStatus { MRU, MFU, MRU_GHOST, MFU_GHOST };
 
-// TODO(student): You can modify or remove this struct as you like.
+// TODO(student): 这个结构体的字段可以按你的需要增删改。
 struct FrameStatus {
   page_id_t page_id_;
   frame_id_t frame_id_;
@@ -41,7 +41,7 @@ struct FrameStatus {
 };
 
 /**
- * ArcReplacer implements the ARC replacement policy.
+ * ArcReplacer 实现了 ARC 替换策略。
  */
 class ArcReplacer {
  public:
@@ -50,9 +50,7 @@ class ArcReplacer {
   DISALLOW_COPY_AND_MOVE(ArcReplacer);
 
   /**
-   * TODO(P1): Add implementation
-   *
-   * @brief Destroys the LRUReplacer.
+   * @brief 销毁 `ArcReplacer`。
    */
   ~ArcReplacer() = default;
 
@@ -63,30 +61,28 @@ class ArcReplacer {
   auto Size() -> size_t;
 
  private:
-  // TODO(student): implement me! You can replace or remove these member variables as you like.
+  // TODO(student): 实现我！这些成员变量你可以随意替换或删除。
   std::list<frame_id_t> mru_;
   std::list<frame_id_t> mfu_;
   std::list<page_id_t> mru_ghost_;
   std::list<page_id_t> mfu_ghost_;
 
-  /* record entries in mru_ and mfu_
-   * this uses frame_id_t to guarantee no duplicate records for the same
-   * frame when they are alive */
+  /* 记录 mru_ 和 mfu_ 里的条目。
+   * 这里用 frame_id_t 做 key，是为了保证同一个 frame 存活期间不会被重复记录 */
   std::unordered_map<frame_id_t, std::shared_ptr<FrameStatus>> alive_map_;
-  /* record entries in mru_ghost_ and mfu_ghost_
-   * this uses page_id_t but not frame_id_t because page_id is the unique
-   * identifier in ghost lists */
+  /* 记录 mru_ghost_ 和 mfu_ghost_ 里的条目。
+   * 这里用 page_id_t 而不是 frame_id_t，因为在 ghost list 里页号才是唯一标识 */
   std::unordered_map<page_id_t, std::shared_ptr<FrameStatus>> ghost_map_;
 
-  /* alive, evictable entries count */
+  /* 存活且可淘汰的条目数量 */
   [[maybe_unused]] size_t curr_size_{0};
-  /* p as in original paper */
+  /* 原论文里的 p */
   [[maybe_unused]] size_t mru_target_size_{0};
-  /* c as in original paper */
+  /* 原论文里的 c */
   [[maybe_unused]] size_t replacer_size_;
   std::mutex latch_;
 
-  // TODO(student): You can add member variables / functions as you like.
+  // TODO(student): 成员变量 / 成员函数可以按你的需要添加。
 };
 
 }  // namespace bustub

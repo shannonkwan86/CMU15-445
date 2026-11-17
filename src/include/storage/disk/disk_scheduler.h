@@ -23,32 +23,31 @@
 namespace bustub {
 
 /**
- * @brief Represents a Write or Read request for the DiskManager to execute.
+ * @brief 表示一个交给 `DiskManager` 执行的读请求或写请求。
  */
 struct DiskRequest {
-  /** Flag indicating whether the request is a write or a read. */
+  /** 标志位：这个请求是写（`true`）还是读（`false`）。 */
   bool is_write_;
 
   /**
-   *  Pointer to the start of the memory location where a page is either:
-   *   1. being read into from disk (on a read).
-   *   2. being written out to disk (on a write).
+   * 指向一块内存的起始地址，页数据就在那里：
+   *   1. 读请求：从磁盘读出来的数据写进这块内存。
+   *   2. 写请求：这块内存里的数据被写到磁盘上。
    */
   char *data_;
 
-  /** ID of the page being read from / written to disk. */
+  /** 要读 / 写的页的 ID。 */
   page_id_t page_id_;
 
-  /** Callback used to signal to the request issuer when the request has been completed. */
+  /** 回调，用来在请求完成后通知发起请求的一方。 */
   std::promise<bool> callback_;
 };
 
 /**
- * @brief The DiskScheduler schedules disk read and write operations.
+ * @brief `DiskScheduler` 负责调度磁盘的读写操作。
  *
- * A request is scheduled by calling DiskScheduler::Schedule() with an appropriate DiskRequest object. The scheduler
- * maintains a background worker thread that processes the scheduled requests using the disk manager. The background
- * thread is created in the DiskScheduler constructor and joined in its destructor.
+ * 调用 `DiskScheduler::Schedule()` 并传入合适的 `DiskRequest` 对象即可提交一个请求。调度器维护一个后台工作线程，
+ * 由它使用磁盘管理器处理已提交的请求。后台线程在 `DiskScheduler` 构造函数里创建，在析构函数里 join。
  */
 class DiskScheduler {
  public:
@@ -62,29 +61,29 @@ class DiskScheduler {
   using DiskSchedulerPromise = std::promise<bool>;
 
   /**
-   * @brief Create a Promise object. If you want to implement your own version of promise, you can change this function
-   * so that our test cases can use your promise implementation.
+   * @brief 创建一个 promise 对象。如果你想实现自己版本的 promise，可以改这个函数，
+   * 这样我们的测试用例就能用上你的实现。
    *
    * @return std::promise<bool>
    */
   auto CreatePromise() -> DiskSchedulerPromise { return {}; };
 
   /**
-   * @brief Deallocates a page on disk.
+   * @brief 释放磁盘上的一个页。
    *
-   * Note: You should look at the documentation for `DeletePage` in `BufferPoolManager` before using this method.
+   * 注意：使用本方法之前，请先看 `BufferPoolManager` 里 `DeletePage` 的文档。
    *
-   * @param page_id The page ID of the page to deallocate from disk.
+   * @param page_id 要从磁盘上释放的页的 ID。
    */
   void DeallocatePage(page_id_t page_id) { disk_manager_->DeletePage(page_id); }
 
  private:
-  /** Pointer to the disk manager. */
+  /** 指向磁盘管理器的指针。 */
   DiskManager *disk_manager_ __attribute__((__unused__));
-  /** A shared queue to concurrently schedule and process requests. When the DiskScheduler's destructor is called,
-   * `std::nullopt` is put into the queue to signal to the background thread to stop execution. */
+  /** 一个共享队列，用于并发地提交和处理请求。`DiskScheduler` 析构时会往队列里放一个
+   * `std::nullopt`，通知后台线程停止运行。 */
   Channel<std::optional<DiskRequest>> request_queue_;
-  /** The background thread responsible for issuing scheduled requests to the disk manager. */
+  /** 后台线程，负责把已提交的请求交给磁盘管理器执行。 */
   std::optional<std::thread> background_thread_;
 };
 }  // namespace bustub

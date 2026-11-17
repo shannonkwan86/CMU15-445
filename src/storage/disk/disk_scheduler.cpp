@@ -18,12 +18,12 @@
 namespace bustub {
 
 DiskScheduler::DiskScheduler(DiskManager *disk_manager) : disk_manager_(disk_manager) {
-  // Spawn the background thread
+  // 启动后台线程
   background_thread_.emplace([&] { StartWorkerThread(); });
 }
 
 DiskScheduler::~DiskScheduler() {
-  // Put a `std::nullopt` in the queue to signal to exit the loop
+  // 往队列里放一个 `std::nullopt`，通知后台线程退出循环
   request_queue_.Put(std::nullopt);
   if (background_thread_.has_value()) {
     background_thread_->join();
@@ -31,11 +31,9 @@ DiskScheduler::~DiskScheduler() {
 }
 
 /**
- * TODO(P1): Add implementation
+ * @brief 提交一批请求，交给 `DiskManager` 执行。
  *
- * @brief Schedules a request for the DiskManager to execute.
- *
- * @param requests The requests to be scheduled.
+ * @param requests 要提交的请求。
  */
 void DiskScheduler::Schedule(std::vector<DiskRequest> &requests) {
   for (auto &req : requests) {
@@ -44,12 +42,10 @@ void DiskScheduler::Schedule(std::vector<DiskRequest> &requests) {
 }
 
 /**
- * TODO(P1): Add implementation
+ * @brief 后台工作线程的函数，负责处理已提交的请求。
  *
- * @brief Background worker thread function that processes scheduled requests.
- *
- * The background thread needs to process requests while the DiskScheduler exists, i.e., this function should not
- * return until ~DiskScheduler() is called. At that point you need to make sure that the function does return.
+ * 只要 `DiskScheduler` 还存在，后台线程就要一直处理请求 —— 也就是说本函数不应该返回，
+ * 直到 `~DiskScheduler()` 被调用。到那时你必须保证本函数确实能返回。
  */
 void DiskScheduler::StartWorkerThread() {
   while (true) {

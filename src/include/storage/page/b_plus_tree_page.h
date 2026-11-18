@@ -66,11 +66,11 @@ class BPlusTreePage {
    */
  private:
   // 成员变量：内部页和叶子页共有的属性
-  IndexPageType page_type_ __attribute__((__unused__));
+  IndexPageType page_type_;
   // 本页中键值对的数量
-  int size_ __attribute__((__unused__));
+  int size_;
   // 本页能容纳的键值对数量上限
-  int max_size_ __attribute__((__unused__));
+  int max_size_;
 };
 
 }  // namespace bustub

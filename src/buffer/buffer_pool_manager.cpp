@@ -47,6 +47,7 @@ void FrameHeader::Reset() {
   pin_count_.store(0);
   is_dirty_ = false;
   page_id_ = std::nullopt;
+  state_ = FrameState::EMPTY;
 }
 
 /**
@@ -104,25 +105,77 @@ BufferPoolManager::~BufferPoolManager() = default;
  */
 auto BufferPoolManager::Size() const -> size_t { return num_frames_; }
 
-auto BufferPoolManager::GetUsableFrame() -> std::optional<frame_id_t> {
+/**
+ * @brief 取一个可用的 frame，把它的 `pin_count_` 置 1 作为占位。
+ *
+ * 返回时帧处于 `EMPTY` 状态、`pin_count_ == 1`、不在 `page_table_` 里。
+ * 如果这个帧是从替换器淘汰来的，脏页的写回已经在本函数内部**在锁外**完成。
+ *
+ * **调用者不得持有 `bpm_latch_`。** 本函数内部自行加锁，返回时已释放。
+ */
+auto BufferPoolManager::AcquireUsableFrame() -> std::optional<frame_id_t> {
+  std::unique_lock lock(*bpm_latch_);
+
+  // 情况 1：还有空闲帧，直接拿走。空闲帧不在页表、不在替换器里，没人能看见它。
   if (!free_frames_.empty()) {
-    auto the_frame_id = free_frames_.back();
+    auto fid = free_frames_.back();
     free_frames_.pop_back();
-    return the_frame_id;
+    frames_[fid]->pin_count_ = 1;  // 占位：I/O 期间不许别人动它
+    return fid;
   }
 
+  // 情况 2：淘汰一个 victim。`Evict()` 内部已经把它从存活链表和 `alive_map_` 里摘除，
+  // 所以即使放锁，别的线程也不会再选中它。
   auto victim = replacer_->Evict();
   if (!victim.has_value()) {
-    return std::nullopt;
+    return std::nullopt;  // 所有 frame 都被 pin 住了
   }
 
-  frame_id_t fid = victim.value();
-  auto old_pid = frames_[fid]->page_id_;
+  auto fid = victim.value();
+  auto frame = frames_[fid];
+  auto old_pid = frame->page_id_.value();
 
-  FlushFrameLocked(frames_[fid], old_pid.value());
-  page_table_.erase(old_pid.value());
-  frames_[fid]->Reset();
+  // 占位 + 标记「正在写回」。
+  // 注意：此时页表里旧页的映射**必须保留**。若提前摘掉，别的线程访问旧页会重新从磁盘
+  // 加载，而磁盘上还是旧版本 —— 等于丢更新。他们应该看到 `FLUSHING` 然后睡等。
+  frame->pin_count_ = 1;
+  frame->state_ = FrameState::FLUSHING;
+  const bool need_flush = frame->is_dirty_;
+
+  lock.unlock();
+  if (need_flush) {
+    auto promise = disk_scheduler_->CreatePromise();
+    auto future = promise.get_future();
+    std::vector<DiskRequest> requests;
+    requests.push_back({true, frame->GetDataMut(), old_pid, std::move(promise)});
+    disk_scheduler_->Schedule(requests);
+    future.get();
+  }
+  lock.lock();
+
+  // 收尾：现在才摘映射、清脏、把帧变回 `EMPTY`。
+  page_table_.erase(old_pid);
+  frame->is_dirty_ = false;
+  frame->page_id_ = std::nullopt;
+  frame->state_ = FrameState::EMPTY;
+  // 唤醒在等旧页的人：他们醒来会重查页表，发现已经不在内存，于是从磁盘重新加载。
+  cv_.notify_all();
+
+  // `pin_count_` 保持 1，作为调用者的占位。
   return fid;
+}
+
+/**
+ * @brief 把一个未被使用的帧还回 `free_frames_`。
+ *
+ * 用于「取到帧之后发现目标页已被别人加载」的路径。
+ */
+void BufferPoolManager::ReleaseUsableFrame(frame_id_t frame_id) {
+  auto frame = frames_[frame_id];
+  frame->pin_count_ = 0;
+  frame->state_ = FrameState::EMPTY;
+  frame->page_id_ = std::nullopt;
+  free_frames_.push_back(frame_id);
 }
 
 /**
@@ -130,51 +183,87 @@ auto BufferPoolManager::GetUsableFrame() -> std::optional<frame_id_t> {
  *
  * 命中页表时只做 pin；未命中时先找可用 frame，再从磁盘读入。
  *
+ * **磁盘 I/O 在 `bpm_latch_` 之外完成。** 靠一个显式状态机保证并发正确性：
+ * 放锁之前先在页表里登记「页 X 在帧 F，`LOADING`」并 pin 住 F；别人看到 `LOADING`
+ * 就在 `cv_` 上睡等，醒来后**重新查表**（不能复用等待前的记忆）。
+ *
  * **调用者不得持有 `bpm_latch_`。** 本函数内部自行加锁，返回时已释放。
  *
- * 返回时 frame 的状态：`pin_count_` 已加 1、已设为不可淘汰、已向替换器
+ * 返回时 frame 的状态：`VALID`、`pin_count_` 已加 1、已设为不可淘汰、已向替换器
  * 记录本次访问。**页锁尚未加**，由调用者负责。
  *
  * @return 成功则返回该 frame；内存耗尽（所有 frame 都被 pin 住）返回 `nullptr`。
  */
 auto BufferPoolManager::FetchFrame(page_id_t page_id, AccessType access_type) -> std::shared_ptr<FrameHeader> {
-  std::scoped_lock lock(*bpm_latch_);
+  std::unique_lock lock(*bpm_latch_);
 
-  // 命中：页已经在内存里，只需要 pin 住并通知替换器。
-  auto it = page_table_.find(page_id);
-  if (it != page_table_.end()) {
-    auto frame = frames_[it->second];
-    frame->pin_count_++;
-    replacer_->RecordAccess(frame->frame_id_, page_id, access_type);
-    replacer_->SetEvictable(frame->frame_id_, false);
+  for (;;) {
+    // ── ① 查表 ────────────────────────────────────────────────
+    auto it = page_table_.find(page_id);
+    if (it != page_table_.end()) {
+      auto frame = frames_[it->second];
+
+      if (frame->state_ != FrameState::VALID) {
+        // 别人正在把这一页读进来（`LOADING`），或正在把它的旧内容写回去（`FLUSHING`）。
+        // 睡到它不再是中间状态为止；醒来后必须重新查表，不能复用这个 frame。
+        cv_.wait(lock,
+                 [&frame] { return frame->state_ != FrameState::LOADING && frame->state_ != FrameState::FLUSHING; });
+        continue;
+      }
+
+      // 命中：页已经在内存里，只需要 pin 住并通知替换器。
+      frame->pin_count_++;
+      replacer_->RecordAccess(frame->frame_id_, page_id, access_type);
+      replacer_->SetEvictable(frame->frame_id_, false);
+      return frame;
+    }
+
+    // ── ② 未命中：取一个可用 frame（可能要先写回脏页，所以必须在锁外做）──
+    lock.unlock();
+    auto fid_opt = AcquireUsableFrame();
+    lock.lock();
+
+    if (!fid_opt.has_value()) {
+      return nullptr;  // 内存耗尽
+    }
+
+    auto fid = fid_opt.value();
+    auto frame = frames_[fid];
+
+    // 取帧的过程中放过锁，别的线程可能已经把这一页加载好了。必须重查，
+    // 否则同一页会被登记两次（两份副本 + 页表被覆盖 + 孤儿帧）。
+    if (page_table_.find(page_id) != page_table_.end()) {
+      ReleaseUsableFrame(fid);
+      continue;
+    }
+
+    // ── ③ 放锁之前先登记：映射 + `LOADING` + pin 占位 ──────────
+    page_table_[page_id] = fid;
+    frame->page_id_ = page_id;
+    frame->state_ = FrameState::LOADING;
+    frame->pin_count_ = 1;
+
+    // ── ④ 放锁读盘 ──────────────────────────────────────────
+    lock.unlock();
+    auto promise = disk_scheduler_->CreatePromise();
+    auto future = promise.get_future();
+    std::vector<DiskRequest> requests;
+    requests.push_back({false, frame->GetDataMut(), page_id, std::move(promise)});
+    disk_scheduler_->Schedule(requests);
+    future.get();
+    lock.lock();
+
+    // ── ⑤ 收尾 + 唤醒等待者 ──────────────────────────────────
+    // 注：`DiskScheduler` 的工作线程没有捕获异常，读盘失败会直接终止进程，所以这里
+    // 不需要「撤映射 + 唤醒等待者」的恢复路径。若将来改成可恢复，必须在这里
+    // `page_table_.erase(page_id)` 并 `cv_.notify_all()`。
+    frame->state_ = FrameState::VALID;
+    replacer_->RecordAccess(fid, page_id, access_type);
+    replacer_->SetEvictable(fid, false);
+    cv_.notify_all();
+
     return frame;
   }
-
-  // 未命中：先找一个可用的 frame（可能是空闲的，也可能是刚被淘汰的）。
-  auto fid_opt = GetUsableFrame();
-  if (!fid_opt.has_value()) {
-    return nullptr;
-  }
-
-  auto fid = fid_opt.value();
-  auto frame = frames_[fid];
-
-  // 把页从磁盘读进 frame 的数据区。
-  auto promise = disk_scheduler_->CreatePromise();
-  auto future = promise.get_future();
-  std::vector<DiskRequest> requests;
-  requests.push_back({false, frame->GetDataMut(), page_id, std::move(promise)});
-  disk_scheduler_->Schedule(requests);
-  future.get();
-
-  // 登记新页。`GetUsableFrame` 刚 `Reset()` 过，所以 `pin_count_` 是赋值而不是自增。
-  page_table_[page_id] = fid;
-  frame->page_id_ = page_id;
-  frame->pin_count_ = 1;
-  replacer_->RecordAccess(fid, page_id, access_type);
-  replacer_->SetEvictable(fid, false);
-
-  return frame;
 }
 
 /**
@@ -401,7 +490,15 @@ auto BufferPoolManager::FlushPageUnsafe(page_id_t page_id) -> bool {
     return false;
   }
 
-  FlushFrameLocked(frames_[it->second], page_id);
+  auto frame = frames_[it->second];
+
+  // 页还在搬（`LOADING` / `FLUSHING`）时 `data_` 不是一份稳定快照。
+  // 本函数是「不安全」变体，不引入等待，直接报告失败。
+  if (frame->state_ != FrameState::VALID) {
+    return false;
+  }
+
+  FlushFrameLocked(frame, page_id);
   return true;
 }
 
@@ -421,22 +518,75 @@ auto BufferPoolManager::FlushPageUnsafe(page_id_t page_id) -> bool {
  * @return 页表里找不到这个页时返回 `false`；否则返回 `true`。
  */
 auto BufferPoolManager::FlushPage(page_id_t page_id) -> bool {
-  // 先把 frame 取出来。拿页锁的时候不能持有 `bpm_latch_`：
-  // `PageGuard::Drop` 的加锁顺序是“先放页锁、再拿 `bpm_latch_`”，
-  // 这里反过来的话两边就互等了。
   std::shared_ptr<FrameHeader> frame;
+  frame_id_t fid = INVALID_FRAME_ID;
+
+  // ── ① 锁内：等到这个页就绪，然后 pin 住它 ──────────────────
   {
-    std::scoped_lock lock(*bpm_latch_);
-    auto it = page_table_.find(page_id);
-    if (it == page_table_.end()) {
-      return false;
+    std::unique_lock lock(*bpm_latch_);
+
+    for (;;) {
+      auto it = page_table_.find(page_id);
+      if (it == page_table_.end()) {
+        return false;
+      }
+
+      frame = frames_[it->second];
+      fid = frame->frame_id_;
+
+      if (frame->state_ != FrameState::VALID) {
+        // 页还在搬（`LOADING` / `FLUSHING`）：等它完成。
+        // 醒来必须重查：这期间页可能被淘汰，也可能换了别的页。
+        cv_.wait(lock, [&] {
+          return frame->state_ == FrameState::VALID || page_table_.find(page_id) == page_table_.end() ||
+                 page_table_.at(page_id) != fid;
+        });
+        continue;
+      }
+
+      // pin 住，保证出锁后到拿页锁的这段时间里它不会被淘汰。
+      frame->pin_count_++;
+      replacer_->SetEvictable(fid, false);
+      break;
     }
-    frame = frames_[it->second];
   }
 
-  // 拿页的写锁，保证写回的是稳定快照（没有别人正在改这份数据）。
+  // ── ② 拿页的写锁，保证写回的是一份稳定快照 ──────────────────
+  // 注意锁顺序：先页锁、再 `bpm_latch_`（与 `PageGuard::Drop` 一致），
+  // 绝不反过来。拿页锁时不能持有 `bpm_latch_`，否则两边互等。
   std::scoped_lock page_lock(frame->rwlatch_);
-  return FlushPageUnsafe(page_id);
+
+  // 拿到页锁之后重新读一次脏标记：上面那次 pin 到这次拿到页锁之间，
+  // 可能有写者已经改过这个页并把它置脏了。
+  bool dirty = false;
+  {
+    std::scoped_lock lock(*bpm_latch_);
+    dirty = frame->is_dirty_;
+  }
+
+  // ── ③ 锁外写回 ──────────────────────────────────────────
+  if (dirty) {
+    auto promise = disk_scheduler_->CreatePromise();
+    auto future = promise.get_future();
+    std::vector<DiskRequest> requests;
+    requests.push_back({true, frame->GetDataMut(), page_id, std::move(promise)});
+    disk_scheduler_->Schedule(requests);
+    future.get();
+  }
+
+  // ── ④ 锁内收尾：清脏 + 减 pin ─────────────────────────────
+  {
+    std::scoped_lock lock(*bpm_latch_);
+    if (dirty) {
+      frame->is_dirty_ = false;
+    }
+    frame->pin_count_--;
+    if (frame->pin_count_ == 0) {
+      replacer_->SetEvictable(fid, true);
+    }
+  }
+
+  return true;
 }
 
 /**
@@ -454,8 +604,9 @@ void BufferPoolManager::FlushAllPagesUnsafe() {
 
   // 已经持有 `bpm_latch_` 了，所以只能调 `FlushFrameLocked`，
   // 不能调 `FlushPageUnsafe`（那会再拿一次同一把非递归锁）。
+  // 跳过还在搬的帧（`LOADING` / `FLUSHING`）：它们的 `data_` 不是稳定快照。
   for (const auto &frame : frames_) {
-    if (frame->page_id_.has_value()) {
+    if (frame->page_id_.has_value() && frame->state_ == FrameState::VALID) {
       FlushFrameLocked(frame, frame->page_id_.value());
     }
   }

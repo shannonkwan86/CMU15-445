@@ -12,8 +12,10 @@
 
 #pragma once
 
+#include <condition_variable>  // NOLINT
 #include <list>
 #include <memory>
+#include <mutex>  // NOLINT
 #include <optional>
 #include <shared_mutex>
 #include <unordered_map>
@@ -31,6 +33,27 @@ namespace bustub {
 class BufferPoolManager;
 class ReadPageGuard;
 class WritePageGuard;
+
+/**
+ * @brief 一个 frame 的生命周期状态。
+ *
+ * 磁盘 I/O 被移到 `bpm_latch_` 之外以后，`page_table_` 里可能存在「映射已经建好、
+ * 但页数据还没就绪」的条目，所以必须用一个显式状态来区分帧的几种中间形态。
+ *
+ * 关键不变量：`LOADING` / `FLUSHING` 期间**必须保留页表映射**。
+ * 如果在写回旧页时提前摘掉映射，别的线程访问该页会重新从磁盘加载，
+ * 而磁盘上还是旧版本 —— 等于丢更新。
+ */
+enum class FrameState {
+  /** @brief 不持有任何页：不在 `page_table_` 里，`data_` 内容无意义。 */
+  EMPTY,
+  /** @brief 正在从磁盘读入（页表已有映射，`data_` 正在被填充）。 */
+  LOADING,
+  /** @brief 正在写回磁盘（页表仍保留旧页的映射，`data_` 仍有效）。 */
+  FLUSHING,
+  /** @brief 数据就绪，可以正常 pin / 访问。 */
+  VALID,
+};
 
 /**
  * @brief `BufferPoolManager` 的辅助类，负责管理一个内存 frame 及其相关的元数据。
@@ -96,6 +119,13 @@ class FrameHeader {
    * 这样也许能让你免去在缓冲池管理器别处搜索对应 (页 ID, frame ID) 映射的开销……
    */
   std::optional<page_id_t> page_id_{std::nullopt};
+
+  /**
+   * @brief 本 frame 当前的生命周期状态。
+   *
+   * 所有读写都在 `bpm_latch_` 下进行，因此**不需要** `std::atomic`。
+   */
+  FrameState state_{FrameState::EMPTY};
 };
 
 /**
@@ -136,9 +166,24 @@ class BufferPoolManager {
   /**
    * @brief 保护缓冲池内部数据结构的锁。
    *
-   * TODO(P1) 建议把这条注释替换成你自己对这个锁究竟保护了哪些内容的说明。
+   * 保护 `page_table_`、`free_frames_`、frame 的页 ID / 脏标记 / pin 计数，
+   * 以及 `replacer_` 的状态，确保页与 frame 的映射和 frame 的分配、回收过程
+   * 不会被并发访问破坏。frame 中实际页数据的读写由 `FrameHeader::rwlatch_`
+   * 以及 page guard 保护；磁盘 I/O 由 `disk_scheduler_` 负责同步。
    */
   std::shared_ptr<std::mutex> bpm_latch_;
+
+  /**
+   * @brief 等待「帧状态变化」的条件变量（全局一个）。
+   *
+   * 必须与 `bpm_latch_` 配对使用：`cv_.wait(lock, pred)` 会原子地放锁并睡下，
+   * 被唤醒时重新拿锁并检查 `pred`。只在两处 `notify_all()`：
+   * `LOADING -> VALID` 和 `FLUSHING -> EMPTY`。
+   *
+   * 用一个全局 cv 的代价是惊群（不相干的等待者也会被唤醒，检查条件不满足后继续睡），
+   * 在 P1 的规模下可以忽略；换成每帧一个 cv 的维护风险更高。
+   */
+  std::condition_variable cv_;
 
   /** @brief 本缓冲池所管理的各个 frame 的头部。 */
   std::vector<std::shared_ptr<FrameHeader>> frames_;
@@ -172,7 +217,26 @@ class BufferPoolManager {
    * `FrameHeader` 的共享指针，要么返回该 `FrameHeader` 的下标。
    */
 
-  auto GetUsableFrame() -> std::optional<frame_id_t>;
+  /**
+   * @brief 取一个可用的 frame，把它的 `pin_count_` 置 1 作为占位。
+   *
+   * 返回时帧处于 `EMPTY` 状态、`pin_count_ == 1`、且不在 `page_table_` 里。
+   * 如果是从替换器淘汰来的，脏页的写回已经在这个函数内部**在锁外**完成。
+   *
+   * **调用者不得持有 `bpm_latch_`。** 本函数内部自行加锁，返回时已释放。
+   *
+   * @return 成功则返回 frame ID；没有任何可淘汰的帧（全被 pin 住）时返回 `std::nullopt`。
+   */
+  auto AcquireUsableFrame() -> std::optional<frame_id_t>;
+
+  /**
+   * @brief 把一个未被使用的帧还回缓冲池（`free_frames_`）。
+   *
+   * 用于「取到帧之后发现目标页已被别人加载」的路径。
+   *
+   * **调用者必须已经持有 `bpm_latch_`。**
+   */
+  void ReleaseUsableFrame(frame_id_t frame_id);
 
   auto FetchFrame(page_id_t page_id, AccessType access_type) -> std::shared_ptr<FrameHeader>;
   /**

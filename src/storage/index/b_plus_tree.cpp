@@ -31,105 +31,100 @@ BPLUSTREE_TYPE::BPlusTree(std::string name, page_id_t header_page_id, BufferPool
 }
 
 /**
- * @brief Helper function to decide whether current b+tree is empty
- * @return Returns true if this B+ tree has no keys and values.
+ * @brief 判断当前 B+ 树是否为空的辅助函数
+ * @return 如果这棵 B+ 树里没有任何键值对，返回 true。
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::IsEmpty() const -> bool { UNIMPLEMENTED("TODO(P2): Add implementation."); }
 
 /*****************************************************************************
- * SEARCH
+ * 查找
  *****************************************************************************/
 /**
- * @brief Return the only value that associated with input key
+ * @brief 返回与输入键关联的那个唯一值
  *
- * This method is used for point query
+ * 本方法用于点查询
  *
- * @param key input key
- * @param[out] result vector that stores the only value that associated with input key, if the value exists
- * @return : true means key exists
+ * @param key 输入的键
+ * @param[out] result 存放与输入键关联的那个唯一值（如果存在的话）的向量
+ * @return ：true 表示该键存在
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result) -> bool {
   UNIMPLEMENTED("TODO(P2): Add implementation.");
-  // Declaration of context instance. Using the Context is not necessary but advised.
+  // Context 实例的声明。使用 Context 不是必须的，但建议使用。
   Context ctx;
 }
 
 /*****************************************************************************
- * INSERTION
+ * 插入
  *****************************************************************************/
 /**
- * @brief Insert constant key & value pair into b+ tree
+ * @brief 把一个键值对插入 B+ 树
  *
- * if current tree is empty, start new tree, update root page id and insert
- * entry; otherwise, insert into leaf page.
+ * 如果当前树是空的，就新建一棵树、更新根页 ID 并插入这条记录；
+ * 否则插入到叶子页中。
  *
- * @param key the key to insert
- * @param value the value associated with key
- * @return: since we only support unique key, if user try to insert duplicate
- * keys return false; otherwise, return true.
+ * @param key 要插入的键
+ * @param value 与键关联的值
+ * @return：由于只支持唯一键，如果用户试图插入重复的键则返回 false，否则返回 true。
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value) -> bool {
   UNIMPLEMENTED("TODO(P2): Add implementation.");
-  // Declaration of context instance. Using the Context is not necessary but advised.
+  // Context 实例的声明。使用 Context 不是必须的，但建议使用。
   Context ctx;
 }
 
 /*****************************************************************************
- * REMOVE
+ * 删除
  *****************************************************************************/
 /**
- * @brief Delete key & value pair associated with input key
- * If current tree is empty, return immediately.
- * If not, User needs to first find the right leaf page as deletion target, then
- * delete entry from leaf page. Remember to deal with redistribute or merge if
- * necessary.
+ * @brief 删除与输入键关联的键值对
+ * 如果当前树是空的，立即返回。
+ * 否则，用户需要先找到正确的叶子页作为删除目标，然后从叶子页中删掉这条记录。
+ * 记住在必要时处理重新分配（redistribute）或合并（merge）。
  *
- * @param key input key
+ * @param key 输入的键
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_TYPE::Remove(const KeyType &key) {
-  // Declaration of context instance.
+  // Context 实例的声明。
   Context ctx;
   UNIMPLEMENTED("TODO(P2): Add implementation.");
 }
 
 /*****************************************************************************
- * INDEX ITERATOR
+ * 索引迭代器
  *****************************************************************************/
 /**
- * @brief Input parameter is void, find the leftmost leaf page first, then construct
- * index iterator
+ * @brief 输入参数为 void，先找到最左边的叶子页，再构造索引迭代器
  *
- * You may want to implement this while implementing Task #3.
+ * 你可能想在实现 Task #3 的时候实现本函数。
  *
- * @return : index iterator
+ * @return ：索引迭代器
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::Begin() -> INDEXITERATOR_TYPE { UNIMPLEMENTED("TODO(P2): Add implementation."); }
 
 /**
- * @brief Input parameter is low key, find the leaf page that contains the input key
- * first, then construct index iterator
- * @return : index iterator
+ * @brief 输入参数为下界键，先找到包含该键的叶子页，再构造索引迭代器
+ * @return ：索引迭代器
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::Begin(const KeyType &key) -> INDEXITERATOR_TYPE { UNIMPLEMENTED("TODO(P2): Add implementation."); }
 
 /**
- * @brief Input parameter is void, construct an index iterator representing the end
- * of the key/value pair in the leaf node
- * @return : index iterator
+ * @brief 输入参数为 void，构造一个表示「叶子节点中键值对末尾」的索引迭代器
+ * @return ：索引迭代器
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::End() -> INDEXITERATOR_TYPE { UNIMPLEMENTED("TODO(P2): Add implementation."); }
 
 /**
- * @return Page id of the root of this tree
+ * @return 本树根节点的页 ID
  *
- * You may want to implement this while implementing Task #3.
+ * 你可能想在实现 Task #3 的时候实现本函数。
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::GetRootPageId() -> page_id_t { UNIMPLEMENTED("TODO(P2): Add implementation."); }

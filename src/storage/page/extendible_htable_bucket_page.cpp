@@ -19,9 +19,8 @@
 namespace bustub {
 
 /**
- * After creating a new bucket page from buffer pool, must call initialize
- * method to set default values
- * @param max_size Max size of the bucket array
+ * 从缓冲池新建一个桶页之后，必须调用本初始化方法来设置默认值
+ * @param max_size 桶数组的最大容量
  */
 template <typename K, typename V, typename KC>
 void ExtendibleHTableBucketPage<K, V, KC>::Init(uint32_t max_size) {
@@ -29,12 +28,12 @@ void ExtendibleHTableBucketPage<K, V, KC>::Init(uint32_t max_size) {
 }
 
 /**
- * Lookup a key
+ * 查找一个键
  *
- * @param key key to lookup
- * @param[out] value value to set
- * @param cmp the comparator
- * @return true if the key and value are present, false if not found.
+ * @param key 要查找的键
+ * @param[out] value 查到的值
+ * @param cmp 比较器
+ * @return 如果键和值都存在则返回 true，找不到则返回 false。
  */
 template <typename K, typename V, typename KC>
 auto ExtendibleHTableBucketPage<K, V, KC>::Lookup(const K &key, V &value, const KC &cmp) const -> bool {
@@ -42,12 +41,12 @@ auto ExtendibleHTableBucketPage<K, V, KC>::Lookup(const K &key, V &value, const 
 }
 
 /**
- * Attempts to insert a key and value in the bucket.
+ * 尝试把一个键值对插入桶中。
  *
- * @param key key to insert
- * @param value value to insert
- * @param cmp the comparator to use
- * @return true if inserted, false if bucket is full or the same key is already present
+ * @param key 要插入的键
+ * @param value 要插入的值
+ * @param cmp 使用的比较器
+ * @return 插入成功返回 true；桶已满或同一个键已存在则返回 false
  */
 template <typename K, typename V, typename KC>
 auto ExtendibleHTableBucketPage<K, V, KC>::Insert(const K &key, const V &value, const KC &cmp) -> bool {
@@ -55,9 +54,9 @@ auto ExtendibleHTableBucketPage<K, V, KC>::Insert(const K &key, const V &value, 
 }
 
 /**
- * Removes a key and value.
+ * 删除一个键值对。
  *
- * @return true if removed, false if not found
+ * @return 删除成功返回 true，找不到则返回 false
  */
 template <typename K, typename V, typename KC>
 auto ExtendibleHTableBucketPage<K, V, KC>::Remove(const K &key, const KC &cmp) -> bool {
@@ -70,10 +69,10 @@ void ExtendibleHTableBucketPage<K, V, KC>::RemoveAt(uint32_t bucket_idx) {
 }
 
 /**
- * @brief Gets the key at an index in the bucket.
+ * @brief 读取桶中某个下标处的键。
  *
- * @param bucket_idx the index in the bucket to get the key at
- * @return key at index bucket_idx of the bucket
+ * @param bucket_idx 要读取键的桶内下标
+ * @return 桶中下标 bucket_idx 处的键
  */
 template <typename K, typename V, typename KC>
 auto ExtendibleHTableBucketPage<K, V, KC>::KeyAt(uint32_t bucket_idx) const -> K {
@@ -81,10 +80,10 @@ auto ExtendibleHTableBucketPage<K, V, KC>::KeyAt(uint32_t bucket_idx) const -> K
 }
 
 /**
- * Gets the value at an index in the bucket.
+ * 读取桶中某个下标处的值。
  *
- * @param bucket_idx the index in the bucket to get the value at
- * @return value at index bucket_idx of the bucket
+ * @param bucket_idx 要读取值的桶内下标
+ * @return 桶中下标 bucket_idx 处的值
  */
 template <typename K, typename V, typename KC>
 auto ExtendibleHTableBucketPage<K, V, KC>::ValueAt(uint32_t bucket_idx) const -> V {
@@ -92,10 +91,10 @@ auto ExtendibleHTableBucketPage<K, V, KC>::ValueAt(uint32_t bucket_idx) const ->
 }
 
 /**
- * Gets the entry at an index in the bucket.
+ * 读取桶中某个下标处的条目。
  *
- * @param bucket_idx the index in the bucket to get the entry at
- * @return entry at index bucket_idx of the bucket
+ * @param bucket_idx 要读取条目的桶内下标
+ * @return 桶中下标 bucket_idx 处的条目
  */
 template <typename K, typename V, typename KC>
 auto ExtendibleHTableBucketPage<K, V, KC>::EntryAt(uint32_t bucket_idx) const -> const std::pair<K, V> & {
@@ -103,7 +102,7 @@ auto ExtendibleHTableBucketPage<K, V, KC>::EntryAt(uint32_t bucket_idx) const ->
 }
 
 /**
- * @return number of entries in the bucket
+ * @return 桶中条目的数量
  */
 template <typename K, typename V, typename KC>
 auto ExtendibleHTableBucketPage<K, V, KC>::Size() const -> uint32_t {
@@ -111,7 +110,7 @@ auto ExtendibleHTableBucketPage<K, V, KC>::Size() const -> uint32_t {
 }
 
 /**
- * @return whether the bucket is full
+ * @return 桶是否已满
  */
 template <typename K, typename V, typename KC>
 auto ExtendibleHTableBucketPage<K, V, KC>::IsFull() const -> bool {
@@ -119,7 +118,7 @@ auto ExtendibleHTableBucketPage<K, V, KC>::IsFull() const -> bool {
 }
 
 /**
- * @return whether the bucket is empty
+ * @return 桶是否为空
  */
 template <typename K, typename V, typename KC>
 auto ExtendibleHTableBucketPage<K, V, KC>::IsEmpty() const -> bool {

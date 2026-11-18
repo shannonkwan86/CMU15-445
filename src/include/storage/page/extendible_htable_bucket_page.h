@@ -11,12 +11,12 @@
 //===----------------------------------------------------------------------===//
 
 /**
- * Bucket page format:
+ * 桶页布局：
  *  ----------------------------------------------------------------------------
  * | METADATA | KEY(1) + VALUE(1) | KEY(2) + VALUE(2) | ... | KEY(n) + VALUE(n)
  *  ----------------------------------------------------------------------------
  *
- * Metadata format (size in byte, 8 bytes in total):
+ * 元数据布局（单位为字节，共 8 字节）：
  *  --------------------------------
  * | CurrentSize (4) | MaxSize (4)
  *  --------------------------------
@@ -42,12 +42,12 @@ constexpr auto HTableBucketArraySize(uint64_t mapping_type_size) -> uint64_t {
 };
 
 /**
- * Bucket page for extendible hash table.
+ * 可扩展哈希表的桶页。
  */
 template <typename KeyType, typename ValueType, typename KeyComparator>
 class ExtendibleHTableBucketPage {
  public:
-  // Delete all constructor / destructor to ensure memory safety
+  // 删掉全部构造函数 / 析构函数，以保证内存安全
   ExtendibleHTableBucketPage() = delete;
   DISALLOW_COPY_AND_MOVE(ExtendibleHTableBucketPage);
 
@@ -74,7 +74,7 @@ class ExtendibleHTableBucketPage {
   auto IsEmpty() const -> bool;
 
   /**
-   * Prints the bucket's occupancy information
+   * 打印桶的占用情况
    */
   void PrintBucket() const;
 

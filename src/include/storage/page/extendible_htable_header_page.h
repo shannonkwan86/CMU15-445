@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 /**
- * Header page format:
+ * 头部页布局：
  *  ---------------------------------------------------
  * | DirectoryPageIds(2048) | MaxDepth (4) | Free(2044)
  *  ---------------------------------------------------
@@ -31,7 +31,7 @@ static constexpr uint64_t HTABLE_HEADER_ARRAY_SIZE = 1 << HTABLE_HEADER_MAX_DEPT
 
 class ExtendibleHTableHeaderPage {
  public:
-  // Delete all constructor / destructor to ensure memory safety
+  // 删掉全部构造函数 / 析构函数，以保证内存安全
   ExtendibleHTableHeaderPage() = delete;
   DISALLOW_COPY_AND_MOVE(ExtendibleHTableHeaderPage);
 

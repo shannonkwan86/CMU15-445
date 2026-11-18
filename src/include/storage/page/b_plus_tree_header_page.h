@@ -17,12 +17,12 @@
 namespace bustub {
 
 /**
- * The header page is just used to retrieve the root page,
- * preventing potential race condition under concurrent environment.
+ * 头部页的唯一用途是保存根页面的 ID，这样在并发环境下读取根节点时
+ * 就不会产生竞态。
  */
 class BPlusTreeHeaderPage {
  public:
-  // Delete all constructor / destructor to ensure memory safety
+  // 删掉全部构造函数 / 析构函数，以保证内存安全
   BPlusTreeHeaderPage() = delete;
   BPlusTreeHeaderPage(const BPlusTreeHeaderPage &other) = delete;
 

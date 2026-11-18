@@ -13,12 +13,11 @@
 /**
  * b_plus_tree.h
  *
- * Implementation of simple b+ tree data structure where internal pages direct
- * the search and leaf pages contain actual data.
- * (1) We only support unique key
- * (2) support insert & remove
- * (3) The structure should shrink and grow dynamically
- * (4) Implement index iterator for range scan
+ * 一个简单 B+ 树数据结构的实现：内部页负责指引搜索方向，叶子页存放真正的数据。
+ * (1) 只支持唯一键
+ * (2) 支持插入与删除
+ * (3) 结构应当能够动态地增长与收缩
+ * (4) 实现用于范围扫描的索引迭代器
  */
 #pragma once
 
@@ -46,24 +45,23 @@ namespace bustub {
 struct PrintableBPlusTree;
 
 /**
- * @brief Definition of the Context class.
+ * @brief Context 类的定义。
  *
- * Hint: This class is designed to help you keep track of the pages
- * that you're modifying or accessing.
+ * 提示：这个类是为了帮你记录「正在修改或访问哪些页」而设计的。
  */
 class Context {
  public:
-  // When you insert into / remove from the B+ tree, store the write guard of header page here.
-  // Remember to drop the header page guard and set it to nullopt when you want to unlock all.
+  // 向 B+ 树插入 / 从 B+ 树删除时，把头部页的写 guard 存在这里。
+  // 当你想把所有页都解锁时，记得把头部页的 guard 释放掉并置为 nullopt。
   std::optional<WritePageGuard> header_page_{std::nullopt};
 
-  // Save the root page id here so that it's easier to know if the current page is the root page.
+  // 把根页面的 ID 存在这里，这样判断「当前页是不是根页」会更方便。
   page_id_t root_page_id_{INVALID_PAGE_ID};
 
-  // Store the write guards of the pages that you're modifying here.
+  // 把正在修改的那些页的写 guard 存在这里。
   std::deque<WritePageGuard> write_set_;
 
-  // You may want to use this when getting value, but not necessary.
+  // 读取值时可能会用到它，但不是必须的。
   std::deque<ReadPageGuard> read_set_;
 
   auto IsRootPage(page_id_t page_id) -> bool { return page_id == root_page_id_; }
@@ -71,7 +69,7 @@ class Context {
 
 #define BPLUSTREE_TYPE BPlusTree<KeyType, ValueType, KeyComparator, NumTombs>
 
-// Main class providing the API for the Interactive B+ Tree.
+// 提供交互式 B+ 树 API 的主类。
 FULL_INDEX_TEMPLATE_ARGUMENTS_DEFN
 class BPlusTree {
   using InternalPage = BPlusTreeInternalPage<KeyType, page_id_t, KeyComparator>;
@@ -82,22 +80,22 @@ class BPlusTree {
                      const KeyComparator &comparator, int leaf_max_size = LEAF_PAGE_SLOT_CNT,
                      int internal_max_size = INTERNAL_PAGE_SLOT_CNT);
 
-  // Returns true if this B+ tree has no keys and values.
+  // 如果这棵 B+ 树里没有任何键值对，返回 true。
   auto IsEmpty() const -> bool;
 
-  // Insert a key-value pair into this B+ tree.
+  // 向这棵 B+ 树插入一个键值对。
   auto Insert(const KeyType &key, const ValueType &value) -> bool;
 
-  // Remove a key and its value from this B+ tree.
+  // 从这棵 B+ 树删除一个键及其对应的值。
   void Remove(const KeyType &key);
 
-  // Return the value associated with a given key
+  // 返回与给定键关联的值
   auto GetValue(const KeyType &key, std::vector<ValueType> *result) -> bool;
 
-  // Return the page id of the root node
+  // 返回根节点的页 ID
   auto GetRootPageId() -> page_id_t;
 
-  // Index iterator
+  // 索引迭代器
   auto Begin() -> INDEXITERATOR_TYPE;
 
   auto End() -> INDEXITERATOR_TYPE;
@@ -110,15 +108,15 @@ class BPlusTree {
 
   auto DrawBPlusTree() -> std::string;
 
-  // read data from file and insert one by one
+  // 从文件中读取数据并逐条插入
   void InsertFromFile(const std::filesystem::path &file_name);
 
-  // read data from file and remove one by one
+  // 从文件中读取数据并逐条删除
   void RemoveFromFile(const std::filesystem::path &file_name);
 
   void BatchOpsFromFile(const std::filesystem::path &file_name);
 
-  // Do not change this type to a BufferPoolManager!
+  // 不要把这里改成 BufferPoolManager！
   std::shared_ptr<TracedBufferPoolManager> bpm_;
 
  private:
@@ -128,7 +126,7 @@ class BPlusTree {
 
   auto ToPrintableBPlusTree(page_id_t root_id) -> PrintableBPlusTree;
 
-  // member variable
+  // 成员变量
   std::string index_name_;
   KeyComparator comparator_;
   std::vector<std::string> log;  // NOLINT
@@ -138,8 +136,8 @@ class BPlusTree {
 };
 
 /**
- * @brief for test only. PrintableBPlusTree is a printable B+ tree.
- * We first convert B+ tree into a printable B+ tree and the print it.
+ * @brief 仅供测试使用。PrintableBPlusTree 是一棵可打印的 B+ 树。
+ * 我们先把 B+ 树转换成一棵可打印的 B+ 树，然后再打印它。
  */
 struct PrintableBPlusTree {
   int size_;
@@ -147,8 +145,8 @@ struct PrintableBPlusTree {
   std::vector<PrintableBPlusTree> children_;
 
   /**
-   * @brief BFS traverse a printable B+ tree and print it into
-   * into out_buf
+   * @brief 对一棵可打印的 B+ 树做 BFS 遍历，并输出到
+   * out_buf 中
    *
    * @param out_buf
    */

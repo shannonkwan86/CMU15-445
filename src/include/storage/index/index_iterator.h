@@ -12,7 +12,7 @@
 
 /**
  * index_iterator.h
- * For range scan of b+ tree
+ * 用于 B+ 树的范围扫描
  */
 #pragma once
 #include <utility>
@@ -29,7 +29,7 @@ namespace bustub {
 FULL_INDEX_TEMPLATE_ARGUMENTS_DEFN
 class IndexIterator {
  public:
-  // you may define your own constructor based on your member variables
+  // 你可以根据自己的成员变量自行定义构造函数
   IndexIterator();
   ~IndexIterator();  // NOLINT
 
@@ -44,7 +44,7 @@ class IndexIterator {
   auto operator!=(const IndexIterator &itr) const -> bool { UNIMPLEMENTED("TODO(P2): Add implementation."); }
 
  private:
-  // add your own private member variables here
+  // 在这里添加你自己的私有成员变量
 };
 
 }  // namespace bustub

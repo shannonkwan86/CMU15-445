@@ -30,9 +30,9 @@
 namespace bustub {
 
 /**
- * Implementation of extendible hash table that is backed by a buffer pool
- * manager. Non-unique keys are supported. Supports insert and delete. The
- * table grows/shrinks dynamically as buckets become full/empty.
+ * 基于缓冲池管理器实现的可扩展哈希表。
+ * 支持非唯一键。支持插入和删除。
+ * 当桶变满 / 变空时，表能够动态地增长 / 收缩。
  */
 template <typename K, typename V, typename KC>
 class DiskExtendibleHashTable {
@@ -70,7 +70,7 @@ class DiskExtendibleHashTable {
                       ExtendibleHTableBucketPage<K, V, KC> *new_bucket, uint32_t new_bucket_idx,
                       uint32_t local_depth_mask);
 
-  // member variables
+  // 成员变量
   std::string index_name_;
   BufferPoolManager *bpm_;
   KC cmp_;

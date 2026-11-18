@@ -20,8 +20,8 @@
 namespace bustub {
 
 /**
- * @note you can change the destructor/constructor method here
- * set your own input parameters
+ * @note 你可以在这里修改析构函数 / 构造函数，
+ * 并设置自己的输入参数
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
 INDEXITERATOR_TYPE::IndexIterator() = default;

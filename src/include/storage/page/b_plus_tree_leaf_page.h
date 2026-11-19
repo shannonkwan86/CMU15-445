@@ -76,6 +76,28 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   auto IsTombstoned(int index) const -> bool;
   void InsertAt(int index, const KeyType &key, const ValueType &value);
   auto LowerBound(const KeyType &key, const KeyComparator &cmp) const -> int;
+  void MoveHalfTo(BPlusTreeLeafPage *recipient);
+
+  void SetValueAt(int index, const ValueType &value);
+
+  /** 物理删除第 index 个条目，并修正墓碑下标。 */
+  void RemoveAt(int index);
+
+  auto GetTombstoneCount() const -> int;
+  void AddTombstone(int index);
+  /** 移除「标记第 index 个条目」的那个墓碑（条目本身保留）。 */
+  auto RemoveTombstone(int index) -> bool;
+  /** 缓冲区满时，真正删除最老的那次删除对应的条目。 */
+  void ApplyOldestTombstone();
+  /** 为即将进入的 incoming 个墓碑腾出空间，必要时先应用最老的。 */
+  void MakeTombstoneRoom(int incoming);
+
+  /** 把本页所有条目接到 recipient 末尾，自己变空。 */
+  void MoveAllTo(BPlusTreeLeafPage *recipient);
+  /** 把第一个条目搬到 recipient 末尾。 */
+  void MoveFirstToEndOf(BPlusTreeLeafPage *recipient);
+  /** 把最后一个条目搬到 recipient 最前面。 */
+  void MoveLastToFrontOf(BPlusTreeLeafPage *recipient);
 
   /**
    * @brief 仅供测试使用。返回一个表示本叶子页所有键的字符串，

@@ -120,6 +120,28 @@ class BPlusTree {
   std::shared_ptr<TracedBufferPoolManager> bpm_;
 
  private:
+  /** 递归插入的三种结果。 */
+  enum class InsertResult {
+    kDuplicate,  // 键已存在，未插入
+    kInserted,   // 插入成功，本页未分裂
+    kSplit,      // 插入成功且本页分裂，需要往父页插一条
+  };
+
+  /**
+   * @brief 在 page_id 这棵子树里插入 key/value。
+   *
+   * 若本页因此分裂，通过 up_key / up_page 告诉调用者要往父页插什么。
+   */
+  auto InsertInto(page_id_t page_id, const KeyType &key, const ValueType &value, KeyType *up_key, page_id_t *up_page)
+      -> InsertResult;
+
+  /**
+   * @brief 处理 cur 的下溢：与兄弟借一个条目，或者与之合并。parent 已持有写守卫。
+   *
+   * cur_guard 会被消费掉（合并时 cur 可能被清空）。
+   */
+  void FixUnderflow(InternalPage *parent, WritePageGuard &&cur_guard);
+
   void ToGraph(page_id_t page_id, const BPlusTreePage *page, std::ofstream &out);
 
   void PrintTree(page_id_t page_id, const BPlusTreePage *page);

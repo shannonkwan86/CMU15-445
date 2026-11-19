@@ -65,6 +65,24 @@ class BPlusTreeInternalPage : public BPlusTreePage {
 
   auto Lookup(const KeyType &key, const KeyComparator &cmp) const -> ValueType;
 
+  void SetValueAt(int index, const ValueType &value);
+
+  void InsertAt(int index, const KeyType &key, const ValueType &value);
+
+  void RemoveAt(int index);
+
+  /** 把右半搬到 recipient，中间键通过 up_key 上浮给父页。 */
+  void MoveHalfTo(BPlusTreeInternalPage *recipient, KeyType *up_key);
+
+  /** 把本页所有孩子接到 recipient 末尾，middle_key 作为接缝处的分隔键。 */
+  void MoveAllTo(BPlusTreeInternalPage *recipient, const KeyType &middle_key);
+
+  /** 把孩子 0 接到 recipient 末尾，本页 key[1] 经 middle_key 上浮。 */
+  void MoveFirstToEndOf(BPlusTreeInternalPage *recipient, KeyType *middle_key);
+
+  /** 把最后一个孩子插到 recipient 最前面，原分隔键经 middle_key 上浮。 */
+  void MoveLastToFrontOf(BPlusTreeInternalPage *recipient, KeyType *middle_key);
+
   /**
    * @brief 仅供测试使用。返回一个表示本内部页所有键的字符串，
    * 格式为 "(key1,key2,key3,...)"。

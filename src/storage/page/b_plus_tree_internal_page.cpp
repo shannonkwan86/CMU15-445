@@ -86,6 +86,115 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::Lookup(const KeyType &key, const KeyCompara
 
   return page_id_array_[child];
 }
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::SetValueAt(int index, const ValueType &value) { page_id_array_[index] = value; }
+
+/**
+ * @brief 线性查找某个孩子在本页的下标，找不到返回 -1。
+ *
+ * 页号本身没有大小语义，所以只能找相等，不能二分。
+ */
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::ValueIndex(const ValueType &value) const -> int {
+  for (int i = 0; i < GetSize(); i++) {
+    if (page_id_array_[i] == value) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::InsertAt(int index, const KeyType &key, const ValueType &value) {
+  for (int i = GetSize(); i > index; i--) {
+    key_array_[i] = key_array_[i - 1];
+    page_id_array_[i] = page_id_array_[i - 1];
+  }
+  key_array_[index] = key;
+  page_id_array_[index] = value;
+  ChangeSizeBy(1);
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::RemoveAt(int index) {
+  for (int i = index; i < GetSize() - 1; i++) {
+    key_array_[i] = key_array_[i + 1];
+    page_id_array_[i] = page_id_array_[i + 1];
+  }
+  ChangeSizeBy(-1);
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::MoveHalfTo(BPlusTreeInternalPage *recipient, KeyType *up_key) {
+  int size = GetSize();
+  int mid = size / 2;
+  *up_key = key_array_[mid];
+
+  int n = size - mid;  // 右半的孩子数
+  for (int i = 0; i < n; i++) {
+    recipient->page_id_array_[i] = page_id_array_[mid + i];
+    if (i > 0) {
+      recipient->key_array_[i] = key_array_[mid + i];  // 0 号键保持无效
+    }
+  }
+  recipient->SetSize(n);
+  SetSize(mid);
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::MoveAllTo(BPlusTreeInternalPage *recipient, const KeyType &middle_key) {
+  int base = recipient->GetSize();
+  int n = GetSize();
+
+  // 本页孩子 0 接到 recipient 末尾，接缝处的键是父页的分隔键
+  recipient->key_array_[base] = middle_key;
+  recipient->page_id_array_[base] = page_id_array_[0];
+  for (int i = 1; i < n; i++) {
+    recipient->key_array_[base + i] = key_array_[i];
+    recipient->page_id_array_[base + i] = page_id_array_[i];
+  }
+  recipient->SetSize(base + n);
+  SetSize(0);
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::MoveFirstToEndOf(BPlusTreeInternalPage *recipient, KeyType *middle_key) {
+  int base = recipient->GetSize();
+
+  recipient->key_array_[base] = *middle_key;
+  recipient->page_id_array_[base] = page_id_array_[0];
+  recipient->SetSize(base + 1);
+
+  // 本页 key[1] 成为新的分隔键
+  *middle_key = key_array_[1];
+
+  for (int i = 0; i < GetSize() - 1; i++) {
+    page_id_array_[i] = page_id_array_[i + 1];
+    key_array_[i] = key_array_[i + 1];
+  }
+  ChangeSizeBy(-1);
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::MoveLastToFrontOf(BPlusTreeInternalPage *recipient, KeyType *middle_key) {
+  int last = GetSize() - 1;
+  int rsize = recipient->GetSize();
+
+  // recipient 整体右移一格，空出孩子 0 的位置
+  for (int i = rsize; i > 0; i--) {
+    recipient->key_array_[i] = recipient->key_array_[i - 1];
+    recipient->page_id_array_[i] = recipient->page_id_array_[i - 1];
+  }
+  recipient->page_id_array_[0] = page_id_array_[last];
+  recipient->key_array_[1] = *middle_key;
+  recipient->SetSize(rsize + 1);
+
+  // 本页最后一个键成为新的分隔键
+  *middle_key = key_array_[last];
+  ChangeSizeBy(-1);
+}
+
 // 内部页的 valuetype 应该是 page_id_t
 template class BPlusTreeInternalPage<GenericKey<4>, page_id_t, GenericComparator<4>>;
 template class BPlusTreeInternalPage<GenericKey<8>, page_id_t, GenericComparator<8>>;

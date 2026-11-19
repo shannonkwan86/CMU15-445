@@ -63,6 +63,8 @@ class BPlusTreeInternalPage : public BPlusTreePage {
 
   auto ValueAt(int index) const -> ValueType;
 
+  auto Lookup(const KeyType &key, const KeyComparator &cmp) const -> ValueType;
+
   /**
    * @brief 仅供测试使用。返回一个表示本内部页所有键的字符串，
    * 格式为 "(key1,key2,key3,...)"。

@@ -71,6 +71,11 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   auto GetNextPageId() const -> page_id_t;
   void SetNextPageId(page_id_t next_page_id);
   auto KeyAt(int index) const -> KeyType;
+  auto ValueAt(int index) const -> ValueType;
+  auto Lookup(const KeyType &key, const KeyComparator &cmp) const -> int;
+  auto IsTombstoned(int index) const -> bool;
+  void InsertAt(int index, const KeyType &key, const ValueType &value);
+  auto LowerBound(const KeyType &key, const KeyComparator &cmp) const -> int;
 
   /**
    * @brief 仅供测试使用。返回一个表示本叶子页所有键的字符串，

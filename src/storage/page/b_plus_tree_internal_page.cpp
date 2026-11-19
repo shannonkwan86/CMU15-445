@@ -64,6 +64,28 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::SetKeyAt(int index, const KeyType &key) { k
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::ValueAt(int index) const -> ValueType { return page_id_array_[index]; }
 
+/**
+ * @brief 在内部页的键数组里二分，确定该走哪个孩子。
+ * @return 目标键应该继续往下找的那个子页的 page_id
+ */
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::Lookup(const KeyType &key, const KeyComparator &cmp) const -> ValueType {
+  int child = 0;
+  int lo = 1;
+  int hi = GetSize() - 1;
+
+  while (lo <= hi) {
+    int mid = lo + (hi - lo) / 2;
+    if (cmp(key_array_[mid], key) <= 0) {
+      child = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+
+  return page_id_array_[child];
+}
 // 内部页的 valuetype 应该是 page_id_t
 template class BPlusTreeInternalPage<GenericKey<4>, page_id_t, GenericComparator<4>>;
 template class BPlusTreeInternalPage<GenericKey<8>, page_id_t, GenericComparator<8>>;

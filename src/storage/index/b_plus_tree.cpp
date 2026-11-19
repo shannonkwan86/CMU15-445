@@ -51,9 +51,30 @@ auto BPLUSTREE_TYPE::IsEmpty() const -> bool { UNIMPLEMENTED("TODO(P2): Add impl
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result) -> bool {
-  UNIMPLEMENTED("TODO(P2): Add implementation.");
-  // Context 实例的声明。使用 Context 不是必须的，但建议使用。
-  Context ctx;
+  page_id_t page_id = GetRootPageId();
+  if (page_id == INVALID_PAGE_ID) {
+    return false;
+  }
+
+  ReadPageGuard guard = bpm_->ReadPage(page_id);
+  auto page = guard.As<BPlusTreePage>();
+
+  while (!page->IsLeafPage()) {
+    auto internal = guard.As<InternalPage>();
+    page_id = internal->Lookup(key, comparator_);
+
+    guard = bpm_->ReadPage(page_id);
+    page = guard.As<BPlusTreePage>();
+  }
+
+  auto leaf = guard.As<LeafPage>();
+  int index = leaf->Lookup(key, comparator_);
+  if (index < 0 || leaf->IsTombstoned(index)) {
+    return false;
+  }
+
+  result->push_back(leaf->ValueAt(index));
+  return true;
 }
 
 /*****************************************************************************
@@ -71,9 +92,41 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value) -> bool {
-  UNIMPLEMENTED("TODO(P2): Add implementation.");
-  // Context 实例的声明。使用 Context 不是必须的，但建议使用。
-  Context ctx;
+  WritePageGuard header_guard = bpm_->WritePage(header_page_id_);
+  auto header = header_guard.AsMut<BPlusTreeHeaderPage>();
+
+  page_id_t page_id = header->root_page_id_;
+  if (page_id == INVALID_PAGE_ID) {
+    page_id_t new_page_id = bpm_->NewPage();
+
+    WritePageGuard leaf_guard = bpm_->WritePage(new_page_id);
+    auto leaf = leaf_guard.AsMut<LeafPage>();
+    leaf->Init(leaf_max_size_);
+    leaf->InsertAt(0, key, value);
+
+    header->root_page_id_ = new_page_id;
+    return true;
+  }
+
+  WritePageGuard guard = bpm_->WritePage(page_id);
+  auto page = guard.AsMut<BPlusTreePage>();
+
+  while (!page->IsLeafPage()) {
+    auto internal = guard.AsMut<InternalPage>();
+    page_id = internal->Lookup(key, comparator_);
+
+    guard = bpm_->WritePage(page_id);
+    page = guard.AsMut<BPlusTreePage>();
+  }
+
+  auto leaf = guard.AsMut<LeafPage>();
+  int index = leaf->LowerBound(key, comparator_);
+  if (index < leaf->GetSize() && comparator_(leaf->KeyAt(index), key) == 0 && !leaf->IsTombstoned(index)) {
+    return false;
+  }
+
+  leaf->InsertAt(index, key, value);
+  return true;
 }
 
 /*****************************************************************************
@@ -127,7 +180,10 @@ auto BPLUSTREE_TYPE::End() -> INDEXITERATOR_TYPE { UNIMPLEMENTED("TODO(P2): Add 
  * 你可能想在实现 Task #3 的时候实现本函数。
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
-auto BPLUSTREE_TYPE::GetRootPageId() -> page_id_t { UNIMPLEMENTED("TODO(P2): Add implementation."); }
+auto BPLUSTREE_TYPE::GetRootPageId() -> page_id_t {
+  ReadPageGuard guard = bpm_->ReadPage(header_page_id_);
+  return guard.As<BPlusTreeHeaderPage>()->root_page_id_;
+}
 
 template class BPlusTree<GenericKey<4>, RID, GenericComparator<4>>;
 

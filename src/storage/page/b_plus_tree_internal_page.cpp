@@ -34,7 +34,10 @@ INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_INTERNAL_PAGE_TYPE::Init(int max_size) {
   SetPageType(IndexPageType::INTERNAL_PAGE);
   SetSize(0);
-  SetMaxSize(max_size);
+
+  // 同叶子页：max_size 必须比物理槽位少一，否则默认值 INTERNAL_PAGE_SLOT_CNT 会写越界。
+  int cap = static_cast<int>(INTERNAL_PAGE_SLOT_CNT) - 1;
+  SetMaxSize(max_size < cap ? max_size : cap);
 }
 
 /**

@@ -35,7 +35,12 @@ FULL_INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_LEAF_PAGE_TYPE::Init(int max_size) {
   SetPageType(IndexPageType::LEAF_PAGE);
   SetSize(0);
-  SetMaxSize(max_size);
+
+  // 约定是「插入后 size > max_size 才分裂」，所以 max_size 必须比物理槽位少一。
+  // 否则调用方传默认值 LEAF_PAGE_SLOT_CNT 时，InsertAt 会写到数组末尾之外一格。
+  int cap = static_cast<int>(LEAF_PAGE_SLOT_CNT) - 1;
+  SetMaxSize(max_size < cap ? max_size : cap);
+
   SetNextPageId(INVALID_PAGE_ID);
   num_tombstones_ = 0;
 }
@@ -70,6 +75,12 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::KeyAt(int index) const -> KeyType { return key_
 
 FULL_INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::ValueAt(int index) const -> ValueType { return rid_array_[index]; }
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::KeyRefAt(int index) const -> const KeyType & { return key_array_[index]; }
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::ValueRefAt(int index) const -> const ValueType & { return rid_array_[index]; }
 
 FULL_INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::Lookup(const KeyType &key, const KeyComparator &cmp) const -> int {

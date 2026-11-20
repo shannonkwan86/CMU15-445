@@ -72,6 +72,9 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   void SetNextPageId(page_id_t next_page_id);
   auto KeyAt(int index) const -> KeyType;
   auto ValueAt(int index) const -> ValueType;
+  /** 借出页内数组元素的引用，供迭代器的 operator* 使用。只在守卫存活期间有效。 */
+  auto KeyRefAt(int index) const -> const KeyType &;
+  auto ValueRefAt(int index) const -> const ValueType &;
   auto Lookup(const KeyType &key, const KeyComparator &cmp) const -> int;
   auto IsTombstoned(int index) const -> bool;
   void InsertAt(int index, const KeyType &key, const ValueType &value);

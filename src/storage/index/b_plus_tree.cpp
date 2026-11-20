@@ -389,21 +389,76 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key) {
  * @return ：索引迭代器
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
-auto BPLUSTREE_TYPE::Begin() -> INDEXITERATOR_TYPE { UNIMPLEMENTED("TODO(P2): Add implementation."); }
+auto BPLUSTREE_TYPE::Begin() -> INDEXITERATOR_TYPE {
+  page_id_t leaf_id = INVALID_PAGE_ID;
+
+  {
+    ReadPageGuard header_guard = bpm_->ReadPage(header_page_id_);
+    page_id_t page_id = header_guard.As<BPlusTreeHeaderPage>()->root_page_id_;
+    header_guard.Drop();
+
+    if (page_id != INVALID_PAGE_ID) {
+      ReadPageGuard page_guard = bpm_->ReadPage(page_id);
+      const auto *page = page_guard.As<BPlusTreePage>();
+
+      // 一路走最左孩子，直到叶子层
+      while (!page->IsLeafPage()) {
+        page_id = page_guard.As<InternalPage>()->ValueAt(0);
+        page_guard = bpm_->ReadPage(page_id);
+        page = page_guard.As<BPlusTreePage>();
+      }
+      leaf_id = page_id;
+    }
+  }  // page_guard 在此析构，避免和迭代器自己的守卫重复加读锁
+
+  if (leaf_id == INVALID_PAGE_ID) {
+    return End();
+  }
+  return INDEXITERATOR_TYPE(bpm_, leaf_id, 0);
+}
 
 /**
  * @brief 输入参数为下界键，先找到包含该键的叶子页，再构造索引迭代器
  * @return ：索引迭代器
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
-auto BPLUSTREE_TYPE::Begin(const KeyType &key) -> INDEXITERATOR_TYPE { UNIMPLEMENTED("TODO(P2): Add implementation."); }
+auto BPLUSTREE_TYPE::Begin(const KeyType &key) -> INDEXITERATOR_TYPE {
+  page_id_t leaf_id = INVALID_PAGE_ID;
+  int index = 0;
+
+  {
+    ReadPageGuard header_guard = bpm_->ReadPage(header_page_id_);
+    page_id_t page_id = header_guard.As<BPlusTreeHeaderPage>()->root_page_id_;
+    header_guard.Drop();
+
+    if (page_id != INVALID_PAGE_ID) {
+      ReadPageGuard page_guard = bpm_->ReadPage(page_id);
+      const auto *page = page_guard.As<BPlusTreePage>();
+
+      while (!page->IsLeafPage()) {
+        page_id = page_guard.As<InternalPage>()->Lookup(key, comparator_);
+        page_guard = bpm_->ReadPage(page_id);
+        page = page_guard.As<BPlusTreePage>();
+      }
+
+      leaf_id = page_id;
+      // 可能是 GetSize()，表示这一页全比 key 小；迭代器构造时会顺延到下一页
+      index = page_guard.As<LeafPage>()->LowerBound(key, comparator_);
+    }
+  }
+
+  if (leaf_id == INVALID_PAGE_ID) {
+    return End();
+  }
+  return INDEXITERATOR_TYPE(bpm_, leaf_id, index);
+}
 
 /**
  * @brief 输入参数为 void，构造一个表示「叶子节点中键值对末尾」的索引迭代器
  * @return ：索引迭代器
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
-auto BPLUSTREE_TYPE::End() -> INDEXITERATOR_TYPE { UNIMPLEMENTED("TODO(P2): Add implementation."); }
+auto BPLUSTREE_TYPE::End() -> INDEXITERATOR_TYPE { return INDEXITERATOR_TYPE(); }
 
 /**
  * @return 本树根节点的页 ID

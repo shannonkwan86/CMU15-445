@@ -531,16 +531,39 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key) {
 FULL_INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_TYPE::RemoveSlow(const KeyType &key) {
   WritePageGuard header_guard = bpm_->WritePage(header_page_id_);
-  auto header = header_guard.AsMut<BPlusTreeHeaderPage>();
-
-  page_id_t root_id = header->root_page_id_;
+  page_id_t root_id = header_guard.AsMut<BPlusTreeHeaderPage>()->root_page_id_;
   if (root_id == INVALID_PAGE_ID) {
     return;
   }
 
+  // crabbing：header 写 → 根 写，顺序自顶向下
+  WritePageGuard root_guard = bpm_->WritePage(root_id);
+
+  // 判据 A：根不会降级 ⇒ root_page_id 不可能变 ⇒ 可以提前放掉 header 写锁
+  // （它挡着所有快路径的读锁）。
+  //
+  // 注意根**不受 GetMinSize() 的半满约束**，所以判据必须按类型分开：
+  //   内部根：修复后 size == 1 才降级 → 要求 size - 1 >= 2
+  //   叶子根：size == 0 才让整棵树变空 → 要求 size - 1 >= 1
+  // 若用 min_size 代替前者，在 internal_min == 1 时会误判为安全（真会降级）。
+  // 叶子根直接复用 CanShallowDelete，它已经处理了墓碑缓冲区（有空位时 size 不变）。
+  //
+  // 约束：放开之后本函数绝不能再碰 header，否则会和「持 header 写锁、等根锁」
+  // 的线程形成死锁环。下面三处写 root_page_id 的代码都只在没放开时才会走到。
+  const auto *root_page = root_guard.As<BPlusTreePage>();
+  bool root_safe = false;
+  if (root_page->IsLeafPage()) {
+    root_safe = CanShallowDelete(root_guard.As<LeafPage>());
+  } else {
+    root_safe = root_page->GetSize() - 1 >= 2;
+  }
+  if (root_safe) {
+    header_guard.Drop();
+  }
+
   // 向下走，把路径上的写守卫压栈（不含叶子页）
   std::deque<WritePageGuard> path;
-  WritePageGuard guard = bpm_->WritePage(root_id);
+  WritePageGuard guard = std::move(root_guard);
   auto page = guard.AsMut<BPlusTreePage>();
 
   while (!page->IsLeafPage()) {
@@ -549,6 +572,21 @@ void BPLUSTREE_TYPE::RemoveSlow(const KeyType &key) {
     path.push_back(std::move(guard));
     guard = bpm_->WritePage(child_id);
     page = guard.AsMut<BPlusTreePage>();
+
+    // 判据 B：孩子删掉一条之后不会下溢 ⇒ 孩子不会被修改 ⇒ 祖先（都在 path 里）
+    // 也不会被修改，可以全部放掉。保护孩子的是孩子自己的写锁，不是祖先的。
+    //
+    // 叶子页必须用 CanShallowDelete：墓碑缓冲区有空位时只追加墓碑、size 不变，
+    // 那种情况本来就安全，用 size - 1 >= min 会漏掉这个机会。
+    bool child_safe = false;
+    if (page->IsLeafPage()) {
+      child_safe = CanShallowDelete(guard.As<LeafPage>());
+    } else {
+      child_safe = page->GetSize() - 1 >= page->GetMinSize();
+    }
+    if (child_safe) {
+      path.clear();
+    }
   }
 
   auto leaf = guard.AsMut<LeafPage>();
@@ -559,6 +597,10 @@ void BPLUSTREE_TYPE::RemoveSlow(const KeyType &key) {
   if (leaf->GetSize() >= leaf->GetMinSize()) {
     return;
   }
+
+  // 叶子被判成「不会下溢」却还是下溢了，path 早已被清空，下面会把它当成根来收缩，
+  // 静默损坏结构。这条断言把「安全 ⇒ 不下溢」变成运行时检查。
+  BUSTUB_ASSERT(!path.empty() || guard.GetPageId() == root_id, "leaf judged safe but underflowed");
 
   // 叶子页下溢，逐层向上修复
   while (!path.empty()) {
@@ -571,7 +613,8 @@ void BPLUSTREE_TYPE::RemoveSlow(const KeyType &key) {
     if (path.empty()) {
       // parent 就是根：内部页只剩一个孩子就降级
       if (parent->GetSize() == 1) {
-        header->root_page_id_ = parent->ValueAt(0);
+        BUSTUB_ASSERT(!root_safe, "root judged safe but collapsed");
+        header_guard.AsMut<BPlusTreeHeaderPage>()->root_page_id_ = parent->ValueAt(0);
       }
       return;
     }
@@ -583,16 +626,18 @@ void BPLUSTREE_TYPE::RemoveSlow(const KeyType &key) {
   }
 
   // 路径已空，guard 持有根
-  auto root_page = guard.AsMut<BPlusTreePage>();
-  if (root_page->IsLeafPage()) {
+  auto root_page_final = guard.AsMut<BPlusTreePage>();
+  if (root_page_final->IsLeafPage()) {
     auto root_leaf = guard.AsMut<LeafPage>();
     if (root_leaf->GetSize() == 0) {
-      header->root_page_id_ = INVALID_PAGE_ID;
+      BUSTUB_ASSERT(!root_safe, "root judged safe but emptied");
+      header_guard.AsMut<BPlusTreeHeaderPage>()->root_page_id_ = INVALID_PAGE_ID;
     }
   } else {
     auto root_internal = guard.AsMut<InternalPage>();
     if (root_internal->GetSize() == 1) {
-      header->root_page_id_ = root_internal->ValueAt(0);
+      BUSTUB_ASSERT(!root_safe, "root judged safe but collapsed");
+      header_guard.AsMut<BPlusTreeHeaderPage>()->root_page_id_ = root_internal->ValueAt(0);
     }
   }
 }

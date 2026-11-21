@@ -202,12 +202,15 @@ class BPlusTree {
   auto TryInsertIntoLeaf(LeafPage *leaf, const KeyType &key, const ValueType &value) -> bool;
 
   /**
-   * @brief 在 page_id 这棵子树里插入 key/value。
+   * @brief 在 guard 持有的页这棵子树里插入 key/value。
    *
-   * 若本页因此分裂，通过 up_key / up_page 告诉调用者要往父页插什么。
+   * 接管 guard 的所有权（不再自己 WritePage），调用方负责按 crabbing 顺序
+   * 「先抓孩子、再放父亲」。若本页因此分裂，通过 up_key / up_page 告诉调用者。
+   *
+   * guard 用 optional 是为了让本层能在「孩子安全」时提前 reset() 释放锁。
    */
-  auto InsertInto(page_id_t page_id, const KeyType &key, const ValueType &value, KeyType *up_key, page_id_t *up_page)
-      -> InsertResult;
+  auto InsertInto(std::optional<WritePageGuard> guard, const KeyType &key, const ValueType &value, KeyType *up_key,
+                  page_id_t *up_page) -> InsertResult;
 
   /**
    * @brief 处理 cur 的下溢：与兄弟借一个条目，或者与之合并。parent 已持有写守卫。

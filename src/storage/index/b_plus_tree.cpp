@@ -137,13 +137,12 @@ auto BPLUSTREE_TYPE::DescendReadOnly(page_id_t root_id, const KeyType &key) -> s
 }
 
 FULL_INDEX_TEMPLATE_ARGUMENTS
-auto BPLUSTREE_TYPE::InsertInto(page_id_t page_id, const KeyType &key, const ValueType &value, KeyType *up_key,
-                                page_id_t *up_page) -> InsertResult {
-  WritePageGuard guard = bpm_->WritePage(page_id);
-  auto page = guard.AsMut<BPlusTreePage>();
+auto BPLUSTREE_TYPE::InsertInto(std::optional<WritePageGuard> guard, const KeyType &key, const ValueType &value,
+                                KeyType *up_key, page_id_t *up_page) -> InsertResult {
+  auto page = guard->AsMut<BPlusTreePage>();
 
   if (page->IsLeafPage()) {
-    auto leaf = guard.AsMut<LeafPage>();
+    auto leaf = guard->AsMut<LeafPage>();
     if (!TryInsertIntoLeaf(leaf, key, value)) {
       return InsertResult::kDuplicate;
     }
@@ -166,12 +165,32 @@ auto BPLUSTREE_TYPE::InsertInto(page_id_t page_id, const KeyType &key, const Val
     return InsertResult::kSplit;
   }
 
-  auto internal = guard.AsMut<InternalPage>();
+  auto internal = guard->AsMut<InternalPage>();
   page_id_t child_page_id = internal->Lookup(key, comparator_);
+
+  // crabbing：先抓孩子，再决定自己还能不能放
+  WritePageGuard child_guard = bpm_->WritePage(child_page_id);
+
+  // 判据 B：孩子装得下多一条 ⇒ 孩子不会分裂 ⇒ 本页不需要被修改。
+  // 注意必须用孩子的 size/max，不是本页的。
+  const auto *child_page = child_guard.As<BPlusTreePage>();
+  const bool child_safe = child_page->GetSize() + 1 <= child_page->GetMaxSize();
 
   KeyType child_up_key;
   page_id_t child_up_page = INVALID_PAGE_ID;
-  InsertResult child_result = InsertInto(child_page_id, key, value, &child_up_key, &child_up_page);
+
+  if (child_safe) {
+    // 本页永远不会被修改，先放掉自己的锁再递归。
+    // 保护孩子的不是本页的锁，而是孩子自己的写锁（在 child_guard 手里）：
+    // 任何要搬走或分裂孩子的操作都需要孩子的写锁。
+    guard.reset();
+
+    InsertResult safe_result = InsertInto(std::move(child_guard), key, value, &child_up_key, &child_up_page);
+    BUSTUB_ASSERT(safe_result != InsertResult::kSplit, "child judged safe but split");
+    return safe_result;
+  }
+
+  InsertResult child_result = InsertInto(std::move(child_guard), key, value, &child_up_key, &child_up_page);
 
   if (child_result != InsertResult::kSplit) {
     return child_result;
@@ -196,10 +215,10 @@ auto BPLUSTREE_TYPE::InsertInto(page_id_t page_id, const KeyType &key, const Val
 FULL_INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::InsertSlow(const KeyType &key, const ValueType &value) -> bool {
   WritePageGuard header_guard = bpm_->WritePage(header_page_id_);
-  auto header = header_guard.AsMut<BPlusTreeHeaderPage>();
+  page_id_t root_page_id = header_guard.AsMut<BPlusTreeHeaderPage>()->root_page_id_;
 
-  page_id_t root_page_id = header->root_page_id_;
   if (root_page_id == INVALID_PAGE_ID) {
+    // 空树：必须改 header，写锁已在手
     page_id_t new_page_id = bpm_->NewPage();
 
     WritePageGuard leaf_guard = bpm_->WritePage(new_page_id);
@@ -207,19 +226,39 @@ auto BPLUSTREE_TYPE::InsertSlow(const KeyType &key, const ValueType &value) -> b
     leaf->Init(leaf_max_size_);
     leaf->InsertAt(0, key, value);
 
-    header->root_page_id_ = new_page_id;
+    header_guard.AsMut<BPlusTreeHeaderPage>()->root_page_id_ = new_page_id;
     return true;
+  }
+
+  // crabbing：header 写 → 根 写，顺序自顶向下
+  std::optional<WritePageGuard> root_guard{bpm_->WritePage(root_page_id)};
+
+  // 判据 A：根装得下多一条 ⇒ 根不会分裂 ⇒ 没有任何路径能改 root_page_id。
+  // 依据：改 root_page_id 必须先改根页本体（切开或搬走孩子），而根页写锁在我们手里。
+  // 四条改根路径（空树建根、根分裂、根降级、根删空）全部需要根写锁。
+  //
+  // 因此可以提前放掉 header 写锁——它挡着所有快路径的读锁。
+  // 约束：放开之后本函数绝不能再碰 header，否则会和「持 header 写锁、等根锁」的
+  // 线程形成死锁环。下面的 kSplit 分支只在没放开时才会走到。
+  const auto *root_page = root_guard->As<BPlusTreePage>();
+  const bool root_safe = root_page->GetSize() + 1 <= root_page->GetMaxSize();
+  if (root_safe) {
+    header_guard.Drop();
   }
 
   KeyType up_key;
   page_id_t up_page = INVALID_PAGE_ID;
-  InsertResult result = InsertInto(root_page_id, key, value, &up_key, &up_page);
+  InsertResult result = InsertInto(std::move(root_guard), key, value, &up_key, &up_page);
 
   if (result == InsertResult::kDuplicate) {
     return false;
   }
 
   if (result == InsertResult::kSplit) {
+    // 根满了才会走到这里，此时 header 写锁从未被放开
+    BUSTUB_ASSERT(!root_safe, "root judged safe but split");
+    auto *header = header_guard.AsMut<BPlusTreeHeaderPage>();
+
     // 根分裂：新建一个内部页当根，旧根和新页都是它的孩子
     page_id_t new_root_id = bpm_->NewPage();
     WritePageGuard new_guard = bpm_->WritePage(new_root_id);

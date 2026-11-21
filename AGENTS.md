@@ -63,7 +63,14 @@ make format && make check-format && make check-lint
 
 - 提交物由 `cd build && make submit-pN` 生成 `projectN-submission.zip`，
   只打包 `CMakeLists.txt` 里 `PN_FILES` 列出的文件（P0 只有 count-min sketch 的 `.h`/`.cpp`）。
-- `AGENTS.md`、`build/`、`GRADESCOPE.md` 等**不在**打包列表里，不影响 OJ 评分。
+- **`make submit-pN` 每次都会重建 zip，会冲掉之前加进去的 `GRADESCOPE.md`。**
+  打包之后**必须**再跑一次 `python3 gradescope_sign.py`（`GRADESCOPE.md` 已存在时它
+  不做交互，只把文件塞进所有 `project*-submission.zip`），然后用
+  `unzip -l projectN-submission.zip | grep GRADESCOPE` 确认它在里面。
+  签名缺失会让 Gradescope 整份判 0，连 P1 的测试也一起归零——很容易误判成代码问题。
+- 提交门禁（**任一失败整个项目 0 分**）：`make check-format`、`make check-lint`、
+  `make check-clang-tidy-pN`。三个都要在 `build/` 下跑一遍再去打包。
+- `AGENTS.md`、`build/`、`notes/`、`tools/` 等不在打包列表里，不影响评分。
 - 不要为了「让提交干净」去删改用户的文件或 git 状态。
 
 ## 5. 教学口径

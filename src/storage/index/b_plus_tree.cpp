@@ -94,6 +94,49 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
  * @return：由于只支持唯一键，如果用户试图插入重复的键则返回 false，否则返回 true。
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::TryInsertIntoLeaf(LeafPage *leaf, const KeyType &key, const ValueType &value) -> bool {
+  int index = leaf->LowerBound(key, comparator_);
+  if (index < leaf->GetSize() && comparator_(leaf->KeyAt(index), key) == 0) {
+    if (!leaf->IsTombstoned(index)) {
+      return false;  // 键已存在且有效，什么都不改
+    }
+    // 这个槽位被墓碑标记过：复用槽位，改 RID 并撤掉墓碑。size_ 不变——这不是插入，是复活。
+    leaf->SetValueAt(index, value);
+    leaf->RemoveTombstone(index);
+    return true;
+  }
+
+  leaf->InsertAt(index, key, value);
+  return true;
+}
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::DescendReadOnly(page_id_t root_id, const KeyType &key) -> std::optional<ReadPath> {
+  if (root_id == INVALID_PAGE_ID) {
+    return std::nullopt;  // 空树
+  }
+
+  ReadPageGuard guard = bpm_->ReadPage(root_id);
+  std::optional<ReadPageGuard> parent;
+
+  while (!guard.As<BPlusTreePage>()->IsLeafPage()) {
+    page_id_t child_id = guard.As<InternalPage>()->Lookup(key, comparator_);
+    ReadPageGuard next = bpm_->ReadPage(child_id);
+
+    if (next.As<BPlusTreePage>()->IsLeafPage()) {
+      // 最后一层：父页读锁保留下来，它是「叶子被合并走」的唯一屏障
+      parent = std::move(guard);
+      guard = std::move(next);
+      break;
+    }
+
+    guard = std::move(next);  // 中间层：孩子到手就放掉父页
+  }
+
+  return ReadPath{root_id, std::move(parent), std::move(guard)};
+}
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::InsertInto(page_id_t page_id, const KeyType &key, const ValueType &value, KeyType *up_key,
                                 page_id_t *up_page) -> InsertResult {
   WritePageGuard guard = bpm_->WritePage(page_id);
@@ -101,18 +144,9 @@ auto BPLUSTREE_TYPE::InsertInto(page_id_t page_id, const KeyType &key, const Val
 
   if (page->IsLeafPage()) {
     auto leaf = guard.AsMut<LeafPage>();
-    int index = leaf->LowerBound(key, comparator_);
-    if (index < leaf->GetSize() && comparator_(leaf->KeyAt(index), key) == 0) {
-      if (!leaf->IsTombstoned(index)) {
-        return InsertResult::kDuplicate;
-      }
-      // 这个槽位被墓碑标记过：直接复用，写入新 RID 并撤掉墓碑
-      leaf->SetValueAt(index, value);
-      leaf->RemoveTombstone(index);
-      return InsertResult::kInserted;
+    if (!TryInsertIntoLeaf(leaf, key, value)) {
+      return InsertResult::kDuplicate;
     }
-
-    leaf->InsertAt(index, key, value);
     if (leaf->GetSize() <= leaf->GetMaxSize()) {
       return InsertResult::kInserted;
     }
@@ -160,7 +194,7 @@ auto BPLUSTREE_TYPE::InsertInto(page_id_t page_id, const KeyType &key, const Val
 }
 
 FULL_INDEX_TEMPLATE_ARGUMENTS
-auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value) -> bool {
+auto BPLUSTREE_TYPE::InsertSlow(const KeyType &key, const ValueType &value) -> bool {
   WritePageGuard header_guard = bpm_->WritePage(header_page_id_);
   auto header = header_guard.AsMut<BPlusTreeHeaderPage>();
 
@@ -200,6 +234,72 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value) -> bool 
   }
 
   return true;
+}
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::InsertFast(const KeyType &key, const ValueType &value) -> FastInsertResult {
+  // 快路径必须完成的重验：
+  //   [1] 树身份稳定    —— 靠全程持有 header 读锁（root 不可能被换掉）
+  //   [2] 父页读锁覆盖锁置换窗口 —— 第 ③ 步，第 ⑤ 步之前不许释放
+  //   [3] LowerBound 重算 / [4] 查重 —— TryInsertIntoLeaf 内部
+  //   [5] size + 1 <= max —— 第 ④ 步（写锁下）
+  //
+  // 加锁顺序必须严格自顶向下：header(读) → 根 → … → 父页(读) → 叶子(写)。
+  // 绝不能在持有下层锁时回头请求 header，那和慢路径的「header 写 → parent 写」
+  // 方向相反，会形成死锁环。
+  //
+  // 全函数只有一处显式 Drop（第 ③ 步放叶子读锁），其余守卫一律靠作用域析构。
+
+  ReadPageGuard header_guard = bpm_->ReadPage(header_page_id_);
+  page_id_t root_id = header_guard.As<BPlusTreeHeaderPage>()->root_page_id_;
+  if (root_id == INVALID_PAGE_ID) {
+    return FastInsertResult::kNeedSlowPath;  // 空树
+  }
+
+  auto path = DescendReadOnly(root_id, key);
+  if (!path.has_value()) {
+    return FastInsertResult::kNeedSlowPath;
+  }
+
+  // ② 读锁下预检：只用来避免无谓地拿写锁，不作数（窗口内可能被别人填满）
+  const auto *leaf = path->leaf_.template As<LeafPage>();
+  if (leaf->GetSize() + 1 > leaf->GetMaxSize()) {
+    return FastInsertResult::kNeedSlowPath;
+  }
+
+  // ③ 锁置换：先放叶子读锁（shared_mutex 不可升级）。父页读锁正覆盖这个窗口，
+  //    别的线程拿不到父页写锁，也就无法把这一页合并走，叶子不会变成孤儿。
+  page_id_t leaf_id = path->leaf_.GetPageId();
+  path->leaf_.Drop();
+  WritePageGuard leaf_guard = bpm_->WritePage(leaf_id);
+
+  // 叶子写锁已在手，谁也搬不走它，父页读锁可以提前放了（只影响并发度，不影响正确性）
+  path->parent_.reset();
+
+  // ④ 写锁下重验 + 插入
+  auto *wleaf = leaf_guard.AsMut<LeafPage>();
+  if (wleaf->GetSize() + 1 > wleaf->GetMaxSize()) {
+    return FastInsertResult::kNeedSlowPath;  // 窗口内被别人填满了
+  }
+  if (!TryInsertIntoLeaf(wleaf, key, value)) {
+    return FastInsertResult::kDuplicate;  // 键已存在
+  }
+  return FastInsertResult::kDone;
+}
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value) -> bool {
+  // InsertFast 在独立函数里跑完，return 时它的守卫全部析构，
+  // 所以走慢路径时树里一把锁都没有，不会和自己残留的读锁相撞。
+  switch (InsertFast(key, value)) {
+    case FastInsertResult::kDone:
+      return true;
+    case FastInsertResult::kDuplicate:
+      return false;
+    case FastInsertResult::kNeedSlowPath:
+      break;
+  }
+  return InsertSlow(key, value);
 }
 
 /*****************************************************************************

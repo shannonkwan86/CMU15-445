@@ -127,6 +127,40 @@ class BPlusTree {
     kSplit,      // 插入成功且本页分裂，需要往父页插一条
   };
 
+  /** 快路径的三种结局。 */
+  enum class FastInsertResult {
+    kDone,          // 插入成功（含复用墓碑槽位）
+    kDuplicate,     // 键已存在，未做任何修改
+    kNeedSlowPath,  // 快路径处理不了（空树 / 会分裂 / 树被换掉），交回慢路径
+  };
+
+  /**
+   * @brief 乐观快路径：只读锁下探到叶子，只在叶子上拿写锁。
+   *
+   * 成功时产生 1 次写（叶子页），失败时把所有守卫留在作用域里析构后返回，
+   * 因此调用方可以直接接着走慢路径，不会和自己残留的读锁相撞。
+   */
+  auto InsertFast(const KeyType &key, const ValueType &value) -> FastInsertResult;
+
+  /**
+   * @brief 悲观慢路径：header 写锁 + 整条路径写锁，处理空树、分裂、根变化。
+   *
+   * 就是原先 Insert 的完整实现，未做任何并发改动。
+   */
+  auto InsertSlow(const KeyType &key, const ValueType &value) -> bool;
+
+  /**
+   * @brief 把一条记录写进叶子页：判重 → 命中墓碑则复活 → 否则按序插入。
+   *
+   * 三种情况：
+   *   - 键已存在且有效      → 返回 false，不做任何修改
+   *   - 键已存在但被墓碑标记 → 复用该槽位（改 RID、撤墓碑），size_ 不变，返回 true
+   *   - 键不存在            → 按序插入，size_ 加一，返回 true
+   *
+   * 不检查容量：调用方必须保证「插入新键时不会溢出」，或者自己处理分裂。
+   */
+  auto TryInsertIntoLeaf(LeafPage *leaf, const KeyType &key, const ValueType &value) -> bool;
+
   /**
    * @brief 在 page_id 这棵子树里插入 key/value。
    *
@@ -141,6 +175,44 @@ class BPlusTree {
    * cur_guard 会被消费掉（合并时 cur 可能被清空）。
    */
   void FixUnderflow(InternalPage *parent, WritePageGuard &&cur_guard);
+
+  /**
+   * @brief 一次只读下探的产物。
+   *
+   * 只保留「叶子页」和「叶子页的父亲」这两级，中间层全部丢弃（锁在下降时已释放）。
+   * 它不是完整路径，不能用来向上回溯。
+   *
+   * 契约：
+   *   - parent_ 的读锁从 Lookup 之前就一直持有，直到本结构析构或被显式释放。因此
+   *     leaf_ 仍然是 parent_ 的孩子——这是「放掉 leaf_ 的读锁、改拿写锁」这个窗口
+   *     期间，防止叶子被别的线程合并走的唯一屏障。
+   *   - 本结构**不校验树身份**。调用方必须从读到 root_id_ 的那一刻起，一直持有
+   *     header 页的**读**锁，直到本次操作结束。否则中途树可能被换掉（根分裂、被
+   *     删空），落点就会失效。
+   *   - 不能在持有下层锁之后再回头去读 header：慢路径是「header 写 → parent
+   *     写」，反向请求会形成死锁环。
+   */
+  struct ReadPath {
+    /** 下探开始时读到的根页号。只是快照，不带锁。 */
+    page_id_t root_id_{INVALID_PAGE_ID};
+    /** 叶子页的父页读守卫；叶子就是根（树高 1）时为空。 */
+    std::optional<ReadPageGuard> parent_;
+    /** 目标叶子页的读守卫。 */
+    ReadPageGuard leaf_;
+  };
+
+  /**
+   * @brief 从 root_id 出发，以只读锁耦合自顶向下探到目标叶子页。
+   *
+   * 本函数**不访问 header 页**：root_id 由调用方提供，并且调用方必须一直持有
+   * header 读锁（见 ReadPath 的契约）。
+   *
+   * 下降途中中间层是「拿到孩子的读锁就放掉父亲的读锁」，只有通向叶子的那一层例外：
+   * 父亲读锁会保留到 ReadPath 析构。
+   *
+   * @return root_id 无效（空树）时返回 std::nullopt；否则返回 {root_id, 父页, 叶子}。
+   */
+  auto DescendReadOnly(page_id_t root_id, const KeyType &key) -> std::optional<ReadPath>;
 
   void ToGraph(page_id_t page_id, const BPlusTreePage *page, std::ofstream &out);
 

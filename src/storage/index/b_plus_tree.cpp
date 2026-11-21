@@ -397,7 +397,100 @@ void BPLUSTREE_TYPE::FixUnderflow(InternalPage *parent, WritePageGuard &&cur_gua
 }
 
 FULL_INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::CanShallowDelete(const LeafPage *leaf) const -> bool {
+  if (LEAF_PAGE_TOMB_CNT > 0 && leaf->GetTombstoneCount() < static_cast<int>(LEAF_PAGE_TOMB_CNT)) {
+    // 缓冲区还有空位：只追加一个墓碑，size 不变，不会下溢
+    return true;
+  }
+  // 需要物理删掉一条（NumTombs == 0，或缓冲区已满、要先应用最老的）
+  return leaf->GetSize() - 1 >= leaf->GetMinSize();
+}
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::TryRemoveFromLeaf(LeafPage *leaf, const KeyType &key) -> bool {
+  int index = leaf->Lookup(key, comparator_);
+  if (index < 0 || leaf->IsTombstoned(index)) {
+    return false;  // 不存在，未做任何修改
+  }
+
+  if (LEAF_PAGE_TOMB_CNT == 0) {
+    leaf->RemoveAt(index);
+    return true;
+  }
+
+  // 缓冲区满时要先应用最老的删除，那会让条目左移，所以必须在重新定位之前做
+  leaf->MakeTombstoneRoom(1);
+  index = leaf->Lookup(key, comparator_);
+  if (index < 0 || leaf->IsTombstoned(index)) {
+    // 腾位时恰好把这一条应用掉了：目标已经不在，也算删除成功
+    return true;
+  }
+  leaf->AddTombstone(index);
+  return true;
+}
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::RemoveFast(const KeyType &key) -> FastRemoveResult {
+  // 加锁顺序与 InsertFast 完全一致：header(读) 全程持有 → … → 父页(读) → 叶子(写)。
+  // header 读锁在手 => root_page_id 不可能被改 => 不需要事后校验树身份。
+
+  ReadPageGuard header_guard = bpm_->ReadPage(header_page_id_);
+  page_id_t root_id = header_guard.As<BPlusTreeHeaderPage>()->root_page_id_;
+  if (root_id == INVALID_PAGE_ID) {
+    return FastRemoveResult::kNotFound;  // 空树，删什么都是「没有」
+  }
+
+  auto path = DescendReadOnly(root_id, key);
+  if (!path.has_value()) {
+    return FastRemoveResult::kNotFound;
+  }
+
+  // 读锁下预检：键不存在就直接返回（0 次写）；会下溢就交给慢路径
+  const auto *leaf = path->leaf_.template As<LeafPage>();
+  int index = leaf->Lookup(key, comparator_);
+  if (index < 0 || leaf->IsTombstoned(index)) {
+    return FastRemoveResult::kNotFound;
+  }
+  if (!CanShallowDelete(leaf)) {
+    return FastRemoveResult::kNeedSlowPath;
+  }
+
+  // 锁置换：先放叶子读锁（shared_mutex 不可升级），父页读锁覆盖这个窗口
+  page_id_t leaf_id = path->leaf_.GetPageId();
+  path->leaf_.Drop();
+  WritePageGuard leaf_guard = bpm_->WritePage(leaf_id);
+
+  // 叶子写锁在手，谁也搬不走它，父页读锁可以提前放了
+  path->parent_.reset();
+
+  // 写锁下重验。注意：所有 return 都必须发生在 TryRemoveFromLeaf 之前——
+  // 它会真的改页面（含 MakeTombstoneRoom 的物理删除），改完就退不回慢路径了。
+  auto *wleaf = leaf_guard.AsMut<LeafPage>();
+  if (!CanShallowDelete(wleaf)) {
+    return FastRemoveResult::kNeedSlowPath;
+  }
+  if (!TryRemoveFromLeaf(wleaf, key)) {
+    return FastRemoveResult::kNotFound;
+  }
+  return FastRemoveResult::kDone;
+}
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_TYPE::Remove(const KeyType &key) {
+  // RemoveFast 在独立函数里跑完，return 时它的守卫全部析构，
+  // 所以走慢路径时树里一把锁都没有，不会和自己残留的读锁相撞。
+  switch (RemoveFast(key)) {
+    case FastRemoveResult::kDone:
+    case FastRemoveResult::kNotFound:
+      return;
+    case FastRemoveResult::kNeedSlowPath:
+      break;
+  }
+  RemoveSlow(key);
+}
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+void BPLUSTREE_TYPE::RemoveSlow(const KeyType &key) {
   WritePageGuard header_guard = bpm_->WritePage(header_page_id_);
   auto header = header_guard.AsMut<BPlusTreeHeaderPage>();
 
@@ -420,21 +513,8 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key) {
   }
 
   auto leaf = guard.AsMut<LeafPage>();
-
-  // 墓碑缓冲区满时要先应用最老的删除，那会让条目左移，所以必须在定位之前做
-  if (LEAF_PAGE_TOMB_CNT > 0) {
-    leaf->MakeTombstoneRoom(1);
-  }
-
-  int index = leaf->Lookup(key, comparator_);
-  if (index < 0 || leaf->IsTombstoned(index)) {
-    return;
-  }
-
-  if (LEAF_PAGE_TOMB_CNT > 0) {
-    leaf->AddTombstone(index);
-  } else {
-    leaf->RemoveAt(index);
+  if (!TryRemoveFromLeaf(leaf, key)) {
+    return;  // 键不存在或已被墓碑标记，什么都没改
   }
 
   if (leaf->GetSize() >= leaf->GetMinSize()) {

@@ -149,6 +149,46 @@ class BPlusTree {
    */
   auto InsertSlow(const KeyType &key, const ValueType &value) -> bool;
 
+  /** 快路径删除的三种结局。 */
+  enum class FastRemoveResult {
+    kDone,          // 删除成功（物理删除或追加墓碑）
+    kNotFound,      // 键不存在或已被墓碑标记，未做任何修改
+    kNeedSlowPath,  // 会下溢，需要父页和兄弟页，交回慢路径
+  };
+
+  /**
+   * @brief 预测「只在叶子上动手、不碰父页」是否安全。
+   *
+   * 必须在**修改任何数据之前**调用：一旦真的物理删掉一条，就没法再干净地退回慢路径。
+   *
+   * - 墓碑缓冲区还有空位：只追加一个墓碑，size 不变 → 安全
+   * - NumTombs == 0 或缓冲区已满：要物理删一条 → 要求 size - 1 >= min_size
+   */
+  auto CanShallowDelete(const LeafPage *leaf) const -> bool;
+
+  /**
+   * @brief 从叶子页删掉一条记录，快慢两条删除路径共用。
+   *
+   * 先判存在（不改状态），再腾墓碑位置（这会物理删一条并让条目左移），
+   * 然后重新定位，最后加墓碑或物理删除。
+   *
+   * @return false 表示键不存在或已被墓碑标记，此时未做任何修改。
+   *
+   * 注意：本函数**不判断**会不会下溢。调用方负责在它之前调 CanShallowDelete，
+   * 或者在它之后自行修复下溢（慢路径就是这么做的）。
+   */
+  auto TryRemoveFromLeaf(LeafPage *leaf, const KeyType &key) -> bool;
+
+  /**
+   * @brief 乐观删除快路径：只读锁下探，只在叶子上拿写锁。
+   *
+   * 加锁顺序与 InsertFast 相同：header(读) 全程持有 → … → 父页(读) → 叶子(写)。
+   */
+  auto RemoveFast(const KeyType &key) -> FastRemoveResult;
+
+  /** 悲观删除慢路径（原先 Remove 的完整实现，未做并发改动）。 */
+  void RemoveSlow(const KeyType &key);
+
   /**
    * @brief 把一条记录写进叶子页：判重 → 命中墓碑则复活 → 否则按序插入。
    *

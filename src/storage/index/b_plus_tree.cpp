@@ -31,108 +31,659 @@ BPLUSTREE_TYPE::BPlusTree(std::string name, page_id_t header_page_id, BufferPool
 }
 
 /**
- * @brief Helper function to decide whether current b+tree is empty
- * @return Returns true if this B+ tree has no keys and values.
+ * @brief 判断当前 B+ 树是否为空的辅助函数
+ * @return 如果这棵 B+ 树里没有任何键值对，返回 true。
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
-auto BPLUSTREE_TYPE::IsEmpty() const -> bool { UNIMPLEMENTED("TODO(P2): Add implementation."); }
+auto BPLUSTREE_TYPE::IsEmpty() const -> bool {
+  ReadPageGuard guard = bpm_->ReadPage(header_page_id_);
+  return guard.As<BPlusTreeHeaderPage>()->root_page_id_ == INVALID_PAGE_ID;
+}
 
 /*****************************************************************************
- * SEARCH
+ * 查找
  *****************************************************************************/
 /**
- * @brief Return the only value that associated with input key
+ * @brief 返回与输入键关联的那个唯一值
  *
- * This method is used for point query
+ * 本方法用于点查询
  *
- * @param key input key
- * @param[out] result vector that stores the only value that associated with input key, if the value exists
- * @return : true means key exists
+ * @param key 输入的键
+ * @param[out] result 存放与输入键关联的那个唯一值（如果存在的话）的向量
+ * @return ：true 表示该键存在
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result) -> bool {
-  UNIMPLEMENTED("TODO(P2): Add implementation.");
-  // Declaration of context instance. Using the Context is not necessary but advised.
-  Context ctx;
+  ReadPageGuard header_guard = bpm_->ReadPage(header_page_id_);
+  page_id_t page_id = header_guard.As<BPlusTreeHeaderPage>()->root_page_id_;
+  if (page_id == INVALID_PAGE_ID) {
+    return false;
+  }
+
+  ReadPageGuard guard = bpm_->ReadPage(page_id);
+  auto page = guard.As<BPlusTreePage>();
+  header_guard.Drop();
+
+  while (!page->IsLeafPage()) {
+    auto internal = guard.As<InternalPage>();
+    page_id = internal->Lookup(key, comparator_);
+
+    guard = bpm_->ReadPage(page_id);
+    page = guard.As<BPlusTreePage>();
+  }
+
+  auto leaf = guard.As<LeafPage>();
+  int index = leaf->Lookup(key, comparator_);
+  if (index < 0 || leaf->IsTombstoned(index)) {
+    return false;
+  }
+
+  result->push_back(leaf->ValueAt(index));
+  return true;
 }
 
 /*****************************************************************************
- * INSERTION
+ * 插入
  *****************************************************************************/
 /**
- * @brief Insert constant key & value pair into b+ tree
+ * @brief 把一个键值对插入 B+ 树
  *
- * if current tree is empty, start new tree, update root page id and insert
- * entry; otherwise, insert into leaf page.
+ * 如果当前树是空的，就新建一棵树、更新根页 ID 并插入这条记录；
+ * 否则插入到叶子页中。
  *
- * @param key the key to insert
- * @param value the value associated with key
- * @return: since we only support unique key, if user try to insert duplicate
- * keys return false; otherwise, return true.
+ * @param key 要插入的键
+ * @param value 与键关联的值
+ * @return：由于只支持唯一键，如果用户试图插入重复的键则返回 false，否则返回 true。
  */
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::TryInsertIntoLeaf(LeafPage *leaf, const KeyType &key, const ValueType &value) -> bool {
+  int index = leaf->LowerBound(key, comparator_);
+  if (index < leaf->GetSize() && comparator_(leaf->KeyAt(index), key) == 0) {
+    if (!leaf->IsTombstoned(index)) {
+      return false;  // 键已存在且有效，什么都不改
+    }
+    // 这个槽位被墓碑标记过：复用槽位，改 RID 并撤掉墓碑。size_ 不变——这不是插入，是复活。
+    leaf->SetValueAt(index, value);
+    leaf->RemoveTombstone(index);
+    return true;
+  }
+
+  leaf->InsertAt(index, key, value);
+  return true;
+}
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::DescendReadOnly(page_id_t root_id, const KeyType &key) -> std::optional<ReadPath> {
+  if (root_id == INVALID_PAGE_ID) {
+    return std::nullopt;  // 空树
+  }
+
+  ReadPageGuard guard = bpm_->ReadPage(root_id);
+  std::optional<ReadPageGuard> parent;
+
+  while (!guard.As<BPlusTreePage>()->IsLeafPage()) {
+    page_id_t child_id = guard.As<InternalPage>()->Lookup(key, comparator_);
+    ReadPageGuard next = bpm_->ReadPage(child_id);
+
+    if (next.As<BPlusTreePage>()->IsLeafPage()) {
+      // 最后一层：父页读锁保留下来，它是「叶子被合并走」的唯一屏障
+      parent = std::move(guard);
+      guard = std::move(next);
+      break;
+    }
+
+    guard = std::move(next);  // 中间层：孩子到手就放掉父页
+  }
+
+  return ReadPath{root_id, std::move(parent), std::move(guard)};
+}
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::InsertInto(std::optional<WritePageGuard> guard, const KeyType &key, const ValueType &value,
+                                KeyType *up_key, page_id_t *up_page) -> InsertResult {
+  auto page = guard->AsMut<BPlusTreePage>();
+
+  if (page->IsLeafPage()) {
+    auto leaf = guard->AsMut<LeafPage>();
+    if (!TryInsertIntoLeaf(leaf, key, value)) {
+      return InsertResult::kDuplicate;
+    }
+    if (leaf->GetSize() <= leaf->GetMaxSize()) {
+      return InsertResult::kInserted;
+    }
+
+    page_id_t new_page_id = bpm_->NewPage();
+    WritePageGuard new_guard = bpm_->WritePage(new_page_id);
+    auto new_leaf = new_guard.AsMut<LeafPage>();
+    new_leaf->Init(leaf_max_size_);
+    leaf->MoveHalfTo(new_leaf);
+
+    // 兄弟指针：新页接在原页后面
+    new_leaf->SetNextPageId(leaf->GetNextPageId());
+    leaf->SetNextPageId(new_page_id);
+
+    *up_key = new_leaf->KeyAt(0);
+    *up_page = new_page_id;
+    return InsertResult::kSplit;
+  }
+
+  auto internal = guard->AsMut<InternalPage>();
+  page_id_t child_page_id = internal->Lookup(key, comparator_);
+
+  // crabbing：先抓孩子，再决定自己还能不能放
+  WritePageGuard child_guard = bpm_->WritePage(child_page_id);
+
+  // 判据 B：孩子装得下多一条 ⇒ 孩子不会分裂 ⇒ 本页不需要被修改。
+  // 注意必须用孩子的 size/max，不是本页的。
+  const auto *child_page = child_guard.As<BPlusTreePage>();
+  const bool child_safe = child_page->GetSize() + 1 <= child_page->GetMaxSize();
+
+  KeyType child_up_key;
+  page_id_t child_up_page = INVALID_PAGE_ID;
+
+  if (child_safe) {
+    // 本页永远不会被修改，先放掉自己的锁再递归。
+    // 保护孩子的不是本页的锁，而是孩子自己的写锁（在 child_guard 手里）：
+    // 任何要搬走或分裂孩子的操作都需要孩子的写锁。
+    guard.reset();
+
+    InsertResult safe_result = InsertInto(std::move(child_guard), key, value, &child_up_key, &child_up_page);
+    BUSTUB_ASSERT(safe_result != InsertResult::kSplit, "child judged safe but split");
+    return safe_result;
+  }
+
+  InsertResult child_result = InsertInto(std::move(child_guard), key, value, &child_up_key, &child_up_page);
+
+  if (child_result != InsertResult::kSplit) {
+    return child_result;
+  }
+
+  int index = internal->ValueIndex(child_page_id);
+  internal->InsertAt(index + 1, child_up_key, child_up_page);
+  if (internal->GetSize() <= internal->GetMaxSize()) {
+    return InsertResult::kInserted;
+  }
+
+  page_id_t new_page_id = bpm_->NewPage();
+  WritePageGuard new_guard = bpm_->WritePage(new_page_id);
+  auto new_internal = new_guard.AsMut<InternalPage>();
+  new_internal->Init(internal_max_size_);
+  internal->MoveHalfTo(new_internal, up_key);
+
+  *up_page = new_page_id;
+  return InsertResult::kSplit;
+}
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::InsertSlow(const KeyType &key, const ValueType &value) -> bool {
+  WritePageGuard header_guard = bpm_->WritePage(header_page_id_);
+  page_id_t root_page_id = header_guard.AsMut<BPlusTreeHeaderPage>()->root_page_id_;
+
+  if (root_page_id == INVALID_PAGE_ID) {
+    // 空树：必须改 header，写锁已在手
+    page_id_t new_page_id = bpm_->NewPage();
+
+    WritePageGuard leaf_guard = bpm_->WritePage(new_page_id);
+    auto leaf = leaf_guard.AsMut<LeafPage>();
+    leaf->Init(leaf_max_size_);
+    leaf->InsertAt(0, key, value);
+
+    header_guard.AsMut<BPlusTreeHeaderPage>()->root_page_id_ = new_page_id;
+    return true;
+  }
+
+  // crabbing：header 写 → 根 写，顺序自顶向下
+  std::optional<WritePageGuard> root_guard{bpm_->WritePage(root_page_id)};
+
+  // 判据 A：根装得下多一条 ⇒ 根不会分裂 ⇒ 没有任何路径能改 root_page_id。
+  // 依据：改 root_page_id 必须先改根页本体（切开或搬走孩子），而根页写锁在我们手里。
+  // 四条改根路径（空树建根、根分裂、根降级、根删空）全部需要根写锁。
+  //
+  // 因此可以提前放掉 header 写锁——它挡着所有快路径的读锁。
+  // 约束：放开之后本函数绝不能再碰 header，否则会和「持 header 写锁、等根锁」的
+  // 线程形成死锁环。下面的 kSplit 分支只在没放开时才会走到。
+  const auto *root_page = root_guard->As<BPlusTreePage>();
+  const bool root_safe = root_page->GetSize() + 1 <= root_page->GetMaxSize();
+  if (root_safe) {
+    header_guard.Drop();
+  }
+
+  KeyType up_key;
+  page_id_t up_page = INVALID_PAGE_ID;
+  InsertResult result = InsertInto(std::move(root_guard), key, value, &up_key, &up_page);
+
+  if (result == InsertResult::kDuplicate) {
+    return false;
+  }
+
+  if (result == InsertResult::kSplit) {
+    // 根满了才会走到这里，此时 header 写锁从未被放开
+    BUSTUB_ASSERT(!root_safe, "root judged safe but split");
+    auto *header = header_guard.AsMut<BPlusTreeHeaderPage>();
+
+    // 根分裂：新建一个内部页当根，旧根和新页都是它的孩子
+    page_id_t new_root_id = bpm_->NewPage();
+    WritePageGuard new_guard = bpm_->WritePage(new_root_id);
+    auto new_root = new_guard.AsMut<InternalPage>();
+    new_root->Init(internal_max_size_);
+    new_root->SetValueAt(0, root_page_id);
+    new_root->SetKeyAt(1, up_key);
+    new_root->SetValueAt(1, up_page);
+    new_root->SetSize(2);
+
+    header->root_page_id_ = new_root_id;
+  }
+
+  return true;
+}
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::InsertFast(const KeyType &key, const ValueType &value) -> FastInsertResult {
+  // 快路径必须完成的重验：
+  //   [1] 树身份稳定    —— 靠全程持有 header 读锁（root 不可能被换掉）
+  //   [2] 父页读锁覆盖锁置换窗口 —— 第 ③ 步，第 ⑤ 步之前不许释放
+  //   [3] LowerBound 重算 / [4] 查重 —— TryInsertIntoLeaf 内部
+  //   [5] size + 1 <= max —— 第 ④ 步（写锁下）
+  //
+  // 加锁顺序必须严格自顶向下：header(读) → 根 → … → 父页(读) → 叶子(写)。
+  // 绝不能在持有下层锁时回头请求 header，那和慢路径的「header 写 → parent 写」
+  // 方向相反，会形成死锁环。
+  //
+  // 全函数只有一处显式 Drop（第 ③ 步放叶子读锁），其余守卫一律靠作用域析构。
+
+  ReadPageGuard header_guard = bpm_->ReadPage(header_page_id_);
+  page_id_t root_id = header_guard.As<BPlusTreeHeaderPage>()->root_page_id_;
+  if (root_id == INVALID_PAGE_ID) {
+    return FastInsertResult::kNeedSlowPath;  // 空树
+  }
+
+  auto path = DescendReadOnly(root_id, key);
+  if (!path.has_value()) {
+    return FastInsertResult::kNeedSlowPath;
+  }
+
+  // ② 读锁下预检：只用来避免无谓地拿写锁，不作数（窗口内可能被别人填满）
+  const auto *leaf = path->leaf_.template As<LeafPage>();
+  if (leaf->GetSize() + 1 > leaf->GetMaxSize()) {
+    return FastInsertResult::kNeedSlowPath;
+  }
+
+  // ③ 锁置换：先放叶子读锁（shared_mutex 不可升级）。父页读锁正覆盖这个窗口，
+  //    别的线程拿不到父页写锁，也就无法把这一页合并走，叶子不会变成孤儿。
+  page_id_t leaf_id = path->leaf_.GetPageId();
+  path->leaf_.Drop();
+  WritePageGuard leaf_guard = bpm_->WritePage(leaf_id);
+
+  // 叶子写锁已在手，谁也搬不走它，父页读锁可以提前放了（只影响并发度，不影响正确性）
+  path->parent_.reset();
+
+  // ④ 写锁下重验 + 插入
+  auto *wleaf = leaf_guard.AsMut<LeafPage>();
+  if (wleaf->GetSize() + 1 > wleaf->GetMaxSize()) {
+    return FastInsertResult::kNeedSlowPath;  // 窗口内被别人填满了
+  }
+  if (!TryInsertIntoLeaf(wleaf, key, value)) {
+    return FastInsertResult::kDuplicate;  // 键已存在
+  }
+  return FastInsertResult::kDone;
+}
+
 FULL_INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value) -> bool {
-  UNIMPLEMENTED("TODO(P2): Add implementation.");
-  // Declaration of context instance. Using the Context is not necessary but advised.
-  Context ctx;
+  // InsertFast 在独立函数里跑完，return 时它的守卫全部析构，
+  // 所以走慢路径时树里一把锁都没有，不会和自己残留的读锁相撞。
+  switch (InsertFast(key, value)) {
+    case FastInsertResult::kDone:
+      return true;
+    case FastInsertResult::kDuplicate:
+      return false;
+    case FastInsertResult::kNeedSlowPath:
+      break;
+  }
+  return InsertSlow(key, value);
 }
 
 /*****************************************************************************
- * REMOVE
+ * 删除
  *****************************************************************************/
 /**
- * @brief Delete key & value pair associated with input key
- * If current tree is empty, return immediately.
- * If not, User needs to first find the right leaf page as deletion target, then
- * delete entry from leaf page. Remember to deal with redistribute or merge if
- * necessary.
+ * @brief 删除与输入键关联的键值对
+ * 如果当前树是空的，立即返回。
+ * 否则，用户需要先找到正确的叶子页作为删除目标，然后从叶子页中删掉这条记录。
+ * 记住在必要时处理重新分配（redistribute）或合并（merge）。
  *
- * @param key input key
+ * @param key 输入的键
  */
+FULL_INDEX_TEMPLATE_ARGUMENTS
+void BPLUSTREE_TYPE::FixUnderflow(InternalPage *parent, WritePageGuard &&cur_guard) {
+  if (parent->GetSize() < 2) {
+    return;  // 没有兄弟可借可合，交给上层继续向上收敛
+  }
+
+  page_id_t cur_id = cur_guard.GetPageId();
+  int index = parent->ValueIndex(cur_id);
+  if (index < 0) {
+    return;
+  }
+
+  int sib_index = (index > 0) ? index - 1 : index + 1;
+  page_id_t sib_id = parent->ValueAt(sib_index);
+  bool cur_is_left = index < sib_index;
+  WritePageGuard sib_guard;
+  if (cur_is_left) {
+    sib_guard = bpm_->WritePage(sib_id);
+  } else {
+    // 保持同层「先左后右」锁序，避免与迭代器的向右扫描形成 AB-BA 死锁
+    cur_guard.Drop();
+    sib_guard = bpm_->WritePage(sib_id);
+    cur_guard = bpm_->WritePage(cur_id);
+  }
+
+  auto cur_page = cur_guard.AsMut<BPlusTreePage>();
+
+  if (cur_page->IsLeafPage()) {
+    auto cur_leaf = cur_guard.AsMut<LeafPage>();
+    auto sib_leaf = sib_guard.AsMut<LeafPage>();
+
+    if (sib_leaf->GetSize() > sib_leaf->GetMinSize()) {
+      if (cur_is_left) {
+        sib_leaf->MoveFirstToEndOf(cur_leaf);
+        parent->SetKeyAt(sib_index, sib_leaf->KeyAt(0));
+      } else {
+        sib_leaf->MoveLastToFrontOf(cur_leaf);
+        parent->SetKeyAt(index, cur_leaf->KeyAt(0));
+      }
+      if (cur_leaf->GetSize() >= cur_leaf->GetMinSize()) {
+        return;
+      }
+      // 借位时若应用了墓碑导致仍然不够，落到下面的合并
+    }
+
+    if (cur_leaf->GetSize() + sib_leaf->GetSize() > cur_leaf->GetMaxSize()) {
+      return;  // 合并会溢出，只能保持欠满
+    }
+
+    if (cur_is_left) {
+      sib_leaf->MoveAllTo(cur_leaf);
+      cur_leaf->SetNextPageId(sib_leaf->GetNextPageId());
+      parent->RemoveAt(sib_index);
+    } else {
+      cur_leaf->MoveAllTo(sib_leaf);
+      sib_leaf->SetNextPageId(cur_leaf->GetNextPageId());
+      parent->RemoveAt(index);
+    }
+    return;
+  }
+
+  auto cur_int = cur_guard.AsMut<InternalPage>();
+  auto sib_int = sib_guard.AsMut<InternalPage>();
+
+  if (sib_int->GetSize() > sib_int->GetMinSize()) {
+    if (cur_is_left) {
+      KeyType sep = parent->KeyAt(sib_index);
+      sib_int->MoveFirstToEndOf(cur_int, &sep);
+      parent->SetKeyAt(sib_index, sep);
+    } else {
+      KeyType sep = parent->KeyAt(index);
+      sib_int->MoveLastToFrontOf(cur_int, &sep);
+      parent->SetKeyAt(index, sep);
+    }
+    return;
+  }
+
+  if (cur_int->GetSize() + sib_int->GetSize() > cur_int->GetMaxSize()) {
+    return;
+  }
+
+  if (cur_is_left) {
+    KeyType sep = parent->KeyAt(sib_index);
+    sib_int->MoveAllTo(cur_int, sep);
+    parent->RemoveAt(sib_index);
+  } else {
+    KeyType sep = parent->KeyAt(index);
+    cur_int->MoveAllTo(sib_int, sep);
+    parent->RemoveAt(index);
+  }
+}
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::CanShallowDelete(const LeafPage *leaf) const -> bool {
+  if (LEAF_PAGE_TOMB_CNT > 0 && leaf->GetTombstoneCount() < static_cast<int>(LEAF_PAGE_TOMB_CNT)) {
+    // 缓冲区还有空位：只追加一个墓碑，size 不变，不会下溢
+    return true;
+  }
+  // 需要物理删掉一条（NumTombs == 0，或缓冲区已满、要先应用最老的）
+  return leaf->GetSize() - 1 >= leaf->GetMinSize();
+}
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::TryRemoveFromLeaf(LeafPage *leaf, const KeyType &key) -> bool {
+  int index = leaf->Lookup(key, comparator_);
+  if (index < 0 || leaf->IsTombstoned(index)) {
+    return false;  // 不存在，未做任何修改
+  }
+
+  if (LEAF_PAGE_TOMB_CNT == 0) {
+    leaf->RemoveAt(index);
+    return true;
+  }
+
+  // 缓冲区满时要先应用最老的删除，那会让条目左移，所以必须在重新定位之前做
+  leaf->MakeTombstoneRoom(1);
+  index = leaf->Lookup(key, comparator_);
+  if (index < 0 || leaf->IsTombstoned(index)) {
+    // 腾位时恰好把这一条应用掉了：目标已经不在，也算删除成功
+    return true;
+  }
+  leaf->AddTombstone(index);
+  return true;
+}
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::RemoveFast(const KeyType &key) -> FastRemoveResult {
+  // 加锁顺序与 InsertFast 完全一致：header(读) 全程持有 → … → 父页(读) → 叶子(写)。
+  // header 读锁在手 => root_page_id 不可能被改 => 不需要事后校验树身份。
+
+  ReadPageGuard header_guard = bpm_->ReadPage(header_page_id_);
+  page_id_t root_id = header_guard.As<BPlusTreeHeaderPage>()->root_page_id_;
+  if (root_id == INVALID_PAGE_ID) {
+    return FastRemoveResult::kNotFound;  // 空树，删什么都是「没有」
+  }
+
+  auto path = DescendReadOnly(root_id, key);
+  if (!path.has_value()) {
+    return FastRemoveResult::kNotFound;
+  }
+
+  // 读锁下预检：键不存在就直接返回（0 次写）；会下溢就交给慢路径
+  const auto *leaf = path->leaf_.template As<LeafPage>();
+  int index = leaf->Lookup(key, comparator_);
+  if (index < 0 || leaf->IsTombstoned(index)) {
+    return FastRemoveResult::kNotFound;
+  }
+  if (!CanShallowDelete(leaf)) {
+    return FastRemoveResult::kNeedSlowPath;
+  }
+
+  // 锁置换：先放叶子读锁（shared_mutex 不可升级），父页读锁覆盖这个窗口
+  page_id_t leaf_id = path->leaf_.GetPageId();
+  path->leaf_.Drop();
+  WritePageGuard leaf_guard = bpm_->WritePage(leaf_id);
+
+  // 叶子写锁在手，谁也搬不走它，父页读锁可以提前放了
+  path->parent_.reset();
+
+  // 写锁下重验。注意：所有 return 都必须发生在 TryRemoveFromLeaf 之前——
+  // 它会真的改页面（含 MakeTombstoneRoom 的物理删除），改完就退不回慢路径了。
+  auto *wleaf = leaf_guard.AsMut<LeafPage>();
+  if (!CanShallowDelete(wleaf)) {
+    return FastRemoveResult::kNeedSlowPath;
+  }
+  if (!TryRemoveFromLeaf(wleaf, key)) {
+    return FastRemoveResult::kNotFound;
+  }
+  return FastRemoveResult::kDone;
+}
+
 FULL_INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_TYPE::Remove(const KeyType &key) {
-  // Declaration of context instance.
-  Context ctx;
-  UNIMPLEMENTED("TODO(P2): Add implementation.");
+  // RemoveFast 在独立函数里跑完，return 时它的守卫全部析构，
+  // 所以走慢路径时树里一把锁都没有，不会和自己残留的读锁相撞。
+  switch (RemoveFast(key)) {
+    case FastRemoveResult::kDone:
+    case FastRemoveResult::kNotFound:
+      return;
+    case FastRemoveResult::kNeedSlowPath:
+      break;
+  }
+  RemoveSlow(key);
+}
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+void BPLUSTREE_TYPE::RemoveSlow(const KeyType &key) {
+  WritePageGuard header_guard = bpm_->WritePage(header_page_id_);
+  auto header = header_guard.AsMut<BPlusTreeHeaderPage>();
+
+  page_id_t root_id = header->root_page_id_;
+  if (root_id == INVALID_PAGE_ID) {
+    return;
+  }
+
+  // 向下走，把路径上的写守卫压栈（不含叶子页）
+  std::deque<WritePageGuard> path;
+  WritePageGuard guard = bpm_->WritePage(root_id);
+  auto page = guard.AsMut<BPlusTreePage>();
+
+  while (!page->IsLeafPage()) {
+    auto internal = guard.AsMut<InternalPage>();
+    page_id_t child_id = internal->Lookup(key, comparator_);
+    path.push_back(std::move(guard));
+    guard = bpm_->WritePage(child_id);
+    page = guard.AsMut<BPlusTreePage>();
+  }
+
+  auto leaf = guard.AsMut<LeafPage>();
+  if (!TryRemoveFromLeaf(leaf, key)) {
+    return;  // 键不存在或已被墓碑标记，什么都没改
+  }
+
+  if (leaf->GetSize() >= leaf->GetMinSize()) {
+    return;
+  }
+
+  // 叶子页下溢，逐层向上修复
+  while (!path.empty()) {
+    WritePageGuard parent_guard = std::move(path.back());
+    path.pop_back();
+    auto parent = parent_guard.AsMut<InternalPage>();
+
+    FixUnderflow(parent, std::move(guard));
+
+    if (path.empty()) {
+      // parent 就是根：内部页只剩一个孩子就降级
+      if (parent->GetSize() == 1) {
+        header->root_page_id_ = parent->ValueAt(0);
+      }
+      return;
+    }
+
+    if (parent->GetSize() >= parent->GetMinSize()) {
+      return;
+    }
+    guard = std::move(parent_guard);
+  }
+
+  // 路径已空，guard 持有根
+  auto root_page = guard.AsMut<BPlusTreePage>();
+  if (root_page->IsLeafPage()) {
+    auto root_leaf = guard.AsMut<LeafPage>();
+    if (root_leaf->GetSize() == 0) {
+      header->root_page_id_ = INVALID_PAGE_ID;
+    }
+  } else {
+    auto root_internal = guard.AsMut<InternalPage>();
+    if (root_internal->GetSize() == 1) {
+      header->root_page_id_ = root_internal->ValueAt(0);
+    }
+  }
 }
 
 /*****************************************************************************
- * INDEX ITERATOR
+ * 索引迭代器
  *****************************************************************************/
 /**
- * @brief Input parameter is void, find the leftmost leaf page first, then construct
- * index iterator
+ * @brief 输入参数为 void，先找到最左边的叶子页，再构造索引迭代器
  *
- * You may want to implement this while implementing Task #3.
+ * 你可能想在实现 Task #3 的时候实现本函数。
  *
- * @return : index iterator
+ * @return ：索引迭代器
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
-auto BPLUSTREE_TYPE::Begin() -> INDEXITERATOR_TYPE { UNIMPLEMENTED("TODO(P2): Add implementation."); }
+auto BPLUSTREE_TYPE::Begin() -> INDEXITERATOR_TYPE {
+  ReadPageGuard header_guard = bpm_->ReadPage(header_page_id_);
+  page_id_t page_id = header_guard.As<BPlusTreeHeaderPage>()->root_page_id_;
+  if (page_id == INVALID_PAGE_ID) {
+    return End();
+  }
+
+  ReadPageGuard page_guard = bpm_->ReadPage(page_id);
+  header_guard.Drop();
+  const auto *page = page_guard.As<BPlusTreePage>();
+
+  // 一路走最左孩子，直到叶子层
+  while (!page->IsLeafPage()) {
+    page_id = page_guard.As<InternalPage>()->ValueAt(0);
+    page_guard = bpm_->ReadPage(page_id);
+    page = page_guard.As<BPlusTreePage>();
+  }
+
+  return INDEXITERATOR_TYPE(bpm_, std::move(page_guard), 0);
+}
 
 /**
- * @brief Input parameter is low key, find the leaf page that contains the input key
- * first, then construct index iterator
- * @return : index iterator
+ * @brief 输入参数为下界键，先找到包含该键的叶子页，再构造索引迭代器
+ * @return ：索引迭代器
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
-auto BPLUSTREE_TYPE::Begin(const KeyType &key) -> INDEXITERATOR_TYPE { UNIMPLEMENTED("TODO(P2): Add implementation."); }
+auto BPLUSTREE_TYPE::Begin(const KeyType &key) -> INDEXITERATOR_TYPE {
+  ReadPageGuard header_guard = bpm_->ReadPage(header_page_id_);
+  page_id_t page_id = header_guard.As<BPlusTreeHeaderPage>()->root_page_id_;
+  if (page_id == INVALID_PAGE_ID) {
+    return End();
+  }
+
+  ReadPageGuard page_guard = bpm_->ReadPage(page_id);
+  header_guard.Drop();
+  const auto *page = page_guard.As<BPlusTreePage>();
+
+  while (!page->IsLeafPage()) {
+    page_id = page_guard.As<InternalPage>()->Lookup(key, comparator_);
+    page_guard = bpm_->ReadPage(page_id);
+    page = page_guard.As<BPlusTreePage>();
+  }
+
+  // 可能是 GetSize()，表示这一页全比 key 小；迭代器构造时会顺延到下一页
+  int index = page_guard.As<LeafPage>()->LowerBound(key, comparator_);
+  return INDEXITERATOR_TYPE(bpm_, std::move(page_guard), index);
+}
 
 /**
- * @brief Input parameter is void, construct an index iterator representing the end
- * of the key/value pair in the leaf node
- * @return : index iterator
+ * @brief 输入参数为 void，构造一个表示「叶子节点中键值对末尾」的索引迭代器
+ * @return ：索引迭代器
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
-auto BPLUSTREE_TYPE::End() -> INDEXITERATOR_TYPE { UNIMPLEMENTED("TODO(P2): Add implementation."); }
+auto BPLUSTREE_TYPE::End() -> INDEXITERATOR_TYPE { return INDEXITERATOR_TYPE(); }
 
 /**
- * @return Page id of the root of this tree
+ * @return 本树根节点的页 ID
  *
- * You may want to implement this while implementing Task #3.
+ * 你可能想在实现 Task #3 的时候实现本函数。
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
-auto BPLUSTREE_TYPE::GetRootPageId() -> page_id_t { UNIMPLEMENTED("TODO(P2): Add implementation."); }
+auto BPLUSTREE_TYPE::GetRootPageId() -> page_id_t {
+  ReadPageGuard guard = bpm_->ReadPage(header_page_id_);
+  return guard.As<BPlusTreeHeaderPage>()->root_page_id_;
+}
 
 template class BPlusTree<GenericKey<4>, RID, GenericComparator<4>>;
 

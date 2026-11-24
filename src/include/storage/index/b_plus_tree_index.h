@@ -45,13 +45,13 @@ class BPlusTreeIndex : public Index {
   auto GetEndIterator() -> SHORT_INDEXITERATOR_TYPE;
 
  protected:
-  // comparator for key
+  // 键的比较器
   KeyComparator comparator_;
-  // container
+  // 容器
   std::shared_ptr<BPlusTree<KeyType, ValueType, KeyComparator>> container_;
 };
 
-/** We only support index table with one integer key for now in BusTub. Hardcode everything here. */
+/** 目前 BusTub 只支持「一个整数键」的索引表。这里把相关类型都写死。 */
 
 constexpr static const auto TWO_INTEGER_SIZE_B_TREE = 8;
 using IntegerKeyType_BTree = GenericKey<TWO_INTEGER_SIZE_B_TREE>;

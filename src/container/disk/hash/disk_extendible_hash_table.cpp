@@ -31,15 +31,15 @@
 namespace bustub {
 
 /**
- * @brief Creates a new DiskExtendibleHashTable.
+ * @brief 创建一个新的 DiskExtendibleHashTable。
  *
  * @param name
- * @param bpm buffer pool manager to be used
- * @param cmp comparator for keys
- * @param hash_fn the hash function
- * @param header_max_depth the max depth allowed for the header page
- * @param directory_max_depth the max depth allowed for the directory page
- * @param bucket_max_size the max size allowed for the bucket page array
+ * @param bpm 要使用的缓冲池管理器
+ * @param cmp 键的比较器
+ * @param hash_fn 哈希函数
+ * @param header_max_depth 头部页允许的最大深度
+ * @param directory_max_depth 目录页允许的最大深度
+ * @param bucket_max_size 桶页数组允许的最大容量
  */
 template <typename K, typename V, typename KC>
 DiskExtendibleHashTable<K, V, KC>::DiskExtendibleHashTable(const std::string &name, BufferPoolManager *bpm,
@@ -56,18 +56,18 @@ DiskExtendibleHashTable<K, V, KC>::DiskExtendibleHashTable(const std::string &na
 }
 
 /*****************************************************************************
- * SEARCH
+ * 查找
  *****************************************************************************/
 
-/** TODO(P2): Add implementation
- * Get the value associated with a given key in the hash table.
+/** TODO(P2)：补充实现
+ * 在哈希表中查找与给定键关联的值。
  *
- * Note(fall2023): This semester you will only need to support unique key-value pairs.
+ * 注意（fall2023）：本学期你只需要支持唯一的键值对。
  *
- * @param key the key to look up
- * @param[out] result the value(s) associated with a given key
- * @param transaction the current transaction
- * @return the value(s) associated with the given key
+ * @param key 要查找的键
+ * @param[out] result 与给定键关联的值
+ * @param transaction 当前事务
+ * @return 与给定键关联的值
  */
 template <typename K, typename V, typename KC>
 auto DiskExtendibleHashTable<K, V, KC>::GetValue(const K &key, std::vector<V> *result, Transaction *transaction) const
@@ -76,16 +76,16 @@ auto DiskExtendibleHashTable<K, V, KC>::GetValue(const K &key, std::vector<V> *r
 }
 
 /*****************************************************************************
- * INSERTION
+ * 插入
  *****************************************************************************/
 
-/** TODO(P2): Add implementation
- * Inserts a key-value pair into the hash table.
+/** TODO(P2)：补充实现
+ * 把一个键值对插入哈希表。
  *
- * @param key the key to create
- * @param value the value to be associated with the key
- * @param transaction the current transaction
- * @return true if insert succeeded, false otherwise
+ * @param key 要创建的键
+ * @param value 要与该键关联的值
+ * @param transaction 当前事务
+ * @return 插入成功返回 true，否则返回 false
  */
 template <typename K, typename V, typename KC>
 auto DiskExtendibleHashTable<K, V, KC>::Insert(const K &key, const V &value, Transaction *transaction) -> bool {
@@ -112,16 +112,16 @@ void DiskExtendibleHashTable<K, V, KC>::UpdateDirectoryMapping(ExtendibleHTableD
 }
 
 /*****************************************************************************
- * REMOVE
+ * 删除
  *****************************************************************************/
 
-/** TODO(P2): Add implementation
- * Removes a key-value pair from the hash table.
+/** TODO(P2)：补充实现
+ * 从哈希表中删除一个键值对。
  *
- * @param key the key to delete
- * @param value the value to delete
- * @param transaction the current transaction
- * @return true if remove succeeded, false otherwise
+ * @param key 要删除的键
+ * @param value 要删除的值
+ * @param transaction 当前事务
+ * @return 删除成功返回 true，否则返回 false
  */
 template <typename K, typename V, typename KC>
 auto DiskExtendibleHashTable<K, V, KC>::Remove(const K &key, Transaction *transaction) -> bool {

@@ -16,6 +16,20 @@
 - 若确实需要改文件才能验证，先说明「需要临时改 X，验证后还原」，得到同意再做，
   并在验证后立刻 `git checkout -- <file>` 还原。
 
+### 1.1 文件状态断言（不要复述过期内容）
+
+- **凡是要陈述「文件当前内容是什么」，必须在本轮读一次。** 不得引用上一轮或
+  更早的读取结果——文件可能已被用户改动，而上下文里的旧内容不会自动失效。
+- **状态类断言先跑 `tools/status.sh`**（git 状态、最近提交、未实现的 `TODO(P2)`、
+  改动文件的格式检查），复述命令输出，不要复述记忆。命令的结果永远产生于
+  它执行的那一刻，记忆不是。
+- 用户说「我已经改过了」「修好了」时，**一律视为文件已变**，先重读再回应，
+  不要接着说「还是老样子」。
+- 已知限制：`dsh` 的 `fs-freshness`（`FS_STALE_VERSION`，见 `dsh-fs-local`）只保护
+  **写**操作——`edit`/`write` 会拒绝覆盖「读完之后被改过」的文件。它**不保护叙述**，
+  因为「我说文件里是 X」不经过任何工具。所以「我记得文件里是 X」这类话没有
+  安全网，只能靠先读。
+
 ## 2. 环境（已配置好，无需重装）
 
 - 工具链（免 root 安装）：`~/.local/opt/bustub-toolchain/`，
@@ -49,7 +63,14 @@ make format && make check-format && make check-lint
 
 - 提交物由 `cd build && make submit-pN` 生成 `projectN-submission.zip`，
   只打包 `CMakeLists.txt` 里 `PN_FILES` 列出的文件（P0 只有 count-min sketch 的 `.h`/`.cpp`）。
-- `AGENTS.md`、`build/`、`GRADESCOPE.md` 等**不在**打包列表里，不影响 OJ 评分。
+- **`make submit-pN` 每次都会重建 zip，会冲掉之前加进去的 `GRADESCOPE.md`。**
+  打包之后**必须**再跑一次 `python3 gradescope_sign.py`（`GRADESCOPE.md` 已存在时它
+  不做交互，只把文件塞进所有 `project*-submission.zip`），然后用
+  `unzip -l projectN-submission.zip | grep GRADESCOPE` 确认它在里面。
+  签名缺失会让 Gradescope 整份判 0，连 P1 的测试也一起归零——很容易误判成代码问题。
+- 提交门禁（**任一失败整个项目 0 分**）：`make check-format`、`make check-lint`、
+  `make check-clang-tidy-pN`。三个都要在 `build/` 下跑一遍再去打包。
+- `AGENTS.md`、`build/`、`notes/`、`tools/` 等不在打包列表里，不影响评分。
 - 不要为了「让提交干净」去删改用户的文件或 git 状态。
 
 ## 5. 教学口径

@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 /**
- * Directory page format:
+ * 目录页布局：
  *  --------------------------------------------------------------------------------------
  * | MaxDepth (4) | GlobalDepth (4) | LocalDepths (512) | BucketPageIds(2048) | Free(1528)
  *  --------------------------------------------------------------------------------------
@@ -32,19 +32,18 @@ namespace bustub {
 static constexpr uint64_t HTABLE_DIRECTORY_PAGE_METADATA_SIZE = sizeof(uint32_t) * 2;
 
 /**
- * HTABLE_DIRECTORY_ARRAY_SIZE is the number of page_ids that can fit in the directory page of an extendible hash index.
- * This is 512 because the directory array must grow in powers of 2, and 1024 page_ids leaves zero room for
- * storage of the other member variables.
+ * HTABLE_DIRECTORY_ARRAY_SIZE 是可扩展哈希索引的目录页里能够容纳的 page_id 数量。
+ * 取 512 是因为目录数组必须按 2 的幂增长，而 1024 个 page_id 就没地方放其他成员变量了。
  */
 static constexpr uint64_t HTABLE_DIRECTORY_MAX_DEPTH = 9;
 static constexpr uint64_t HTABLE_DIRECTORY_ARRAY_SIZE = 1 << HTABLE_DIRECTORY_MAX_DEPTH;
 
 /**
- * Directory Page for extendible hash table.
+ * 可扩展哈希表的目录页。
  */
 class ExtendibleHTableDirectoryPage {
  public:
-  // Delete all constructor / destructor to ensure memory safety
+  // 删掉全部构造函数 / 析构函数，以保证内存安全
   ExtendibleHTableDirectoryPage() = delete;
   DISALLOW_COPY_AND_MOVE(ExtendibleHTableDirectoryPage);
 
@@ -59,27 +58,25 @@ class ExtendibleHTableDirectoryPage {
   auto GetSplitImageIndex(uint32_t bucket_idx) const -> uint32_t;
 
   /**
-   * GetGlobalDepthMask - returns a mask of global_depth 1's and the rest 0's.
+   * GetGlobalDepthMask - 返回一个「低 global_depth 位为 1、其余为 0」的掩码。
    *
-   * In Extendible Hashing we map a key to a directory index
-   * using the following hash + mask function.
+   * 在可扩展哈希中，我们用下面这个「哈希 + 掩码」函数把键映射到目录下标：
    *
    * DirectoryIndex = Hash(key) & GLOBAL_DEPTH_MASK
    *
-   * where GLOBAL_DEPTH_MASK is a mask with exactly GLOBAL_DEPTH 1's from LSB
-   * upwards.  For example, global depth 3 corresponds to 0x00000007 in a 32-bit
-   * representation.
+   * 其中 GLOBAL_DEPTH_MASK 是一个从最低位开始、恰好有 GLOBAL_DEPTH 个 1 的掩码。
+   * 例如全局深度为 3 时，在 32 位表示中对应的就是 0x00000007。
    *
-   * @return mask of global_depth 1's and the rest 0's (with 1's from LSB upwards)
+   * @return 低 global_depth 位为 1、其余为 0 的掩码（1 从最低位开始向上）
    */
   auto GetGlobalDepthMask() const -> uint32_t;
 
   /**
-   * GetLocalDepthMask - same as global depth mask, except it
-   * uses the local depth of the bucket located at bucket_idx
+   * GetLocalDepthMask - 与全局深度掩码相同，只不过用的是
+   * 下标 bucket_idx 处那个桶的局部深度
    *
-   * @param bucket_idx the index to use for looking up local depth
-   * @return mask of local 1's and the rest 0's (with 1's from LSB upwards)
+   * @param bucket_idx 用来查局部深度的下标
+   * @return 低 local_depth 位为 1、其余为 0 的掩码（1 从最低位开始向上）
    */
   auto GetLocalDepthMask(uint32_t bucket_idx) const -> uint32_t;
 
@@ -96,7 +93,7 @@ class ExtendibleHTableDirectoryPage {
   auto Size() const -> uint32_t;
 
   /**
-   * @return the max directory size
+   * @return 目录的最大大小
    */
   auto MaxSize() const -> uint32_t;
 
@@ -111,15 +108,15 @@ class ExtendibleHTableDirectoryPage {
   /**
    * VerifyIntegrity
    *
-   * Verify the following invariants:
-   * (1) All LD <= GD.
-   * (2) Each bucket has precisely 2^(GD - LD) pointers pointing to it.
-   * (3) The LD is the same at each index with the same bucket_page_id
+   * 校验下面几条不变量：
+   * (1) 所有 LD <= GD。
+   * (2) 每个桶都恰好有 2^(GD - LD) 个指针指向它。
+   * (3) 指向同一个 bucket_page_id 的那些下标，LD 必须相同。
    */
   void VerifyIntegrity() const;
 
   /**
-   * Prints the current directory
+   * 打印当前目录
    */
   void PrintDirectory() const;
 

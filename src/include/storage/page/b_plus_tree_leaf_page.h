@@ -29,16 +29,14 @@ namespace bustub {
    (sizeof(KeyType) + sizeof(ValueType)))  // NOLINT
 
 /**
- * Store indexed key and record id(record id = page id combined with slot id,
- * see include/common/rid.h for detailed implementation) together within leaf
- * page. Only support unique key.
+ * 在叶子页里同时存放被索引的键和记录 ID（记录 ID = 页 ID 加槽位号，
+ * 具体实现见 include/common/rid.h）。只支持唯一键。
  *
- * Leaf pages also contain a fixed buffer of "tombstone" indexes for entries
- * that have been deleted.
+ * 叶子页还包含一块固定大小的「墓碑」缓冲区，用来记录那些已经被删除的条目。
  *
- * Leaf page format (keys are stored in order, tomb order is up to you):
+ * 叶子页布局（键按顺序存放，墓碑的顺序由你决定）：
  *  --------------------
- * | HEADER | TOMB_SIZE | (where TOMB_SIZE is num_tombstones_)
+ * | HEADER | TOMB_SIZE |（其中 TOMB_SIZE 就是 num_tombstones_）
  *  --------------------
  *  -----------------------------------
  * | TOMB(0) | TOMB(1) | ... | TOMB(k) |
@@ -50,7 +48,7 @@ namespace bustub {
  * | RID(1) | RID(2) | ... | RID(n) |
  *  ---------------------------------
  *
- *  Header format (size in byte, 16 bytes in total):
+ *  头部布局（单位为字节，共 16 字节）：
  *  -----------------------------------------------
  * | PageType (4) | CurrentSize (4) | MaxSize (4) |
  *  -----------------------------------------------
@@ -61,7 +59,7 @@ namespace bustub {
 FULL_INDEX_TEMPLATE_ARGUMENTS_DEFN
 class BPlusTreeLeafPage : public BPlusTreePage {
  public:
-  // Delete all constructor / destructor to ensure memory safety
+  // 删掉全部构造函数 / 析构函数，以保证内存安全
   BPlusTreeLeafPage() = delete;
   BPlusTreeLeafPage(const BPlusTreeLeafPage &other) = delete;
 
@@ -69,14 +67,44 @@ class BPlusTreeLeafPage : public BPlusTreePage {
 
   auto GetTombstones() const -> std::vector<KeyType>;
 
-  // Helper methods
+  // 辅助函数
   auto GetNextPageId() const -> page_id_t;
   void SetNextPageId(page_id_t next_page_id);
   auto KeyAt(int index) const -> KeyType;
+  auto ValueAt(int index) const -> ValueType;
+  /** 借出页内数组元素的引用，供迭代器的 operator* 使用。只在守卫存活期间有效。 */
+  auto KeyRefAt(int index) const -> const KeyType &;
+  auto ValueRefAt(int index) const -> const ValueType &;
+  auto Lookup(const KeyType &key, const KeyComparator &cmp) const -> int;
+  auto IsTombstoned(int index) const -> bool;
+  void InsertAt(int index, const KeyType &key, const ValueType &value);
+  auto LowerBound(const KeyType &key, const KeyComparator &cmp) const -> int;
+  void MoveHalfTo(BPlusTreeLeafPage *recipient);
+
+  void SetValueAt(int index, const ValueType &value);
+
+  /** 物理删除第 index 个条目，并修正墓碑下标。 */
+  void RemoveAt(int index);
+
+  auto GetTombstoneCount() const -> int;
+  void AddTombstone(int index);
+  /** 移除「标记第 index 个条目」的那个墓碑（条目本身保留）。 */
+  auto RemoveTombstone(int index) -> bool;
+  /** 缓冲区满时，真正删除最老的那次删除对应的条目。 */
+  void ApplyOldestTombstone();
+  /** 为即将进入的 incoming 个墓碑腾出空间，必要时先应用最老的。 */
+  void MakeTombstoneRoom(int incoming);
+
+  /** 把本页所有条目接到 recipient 末尾，自己变空。 */
+  void MoveAllTo(BPlusTreeLeafPage *recipient);
+  /** 把第一个条目搬到 recipient 末尾。 */
+  void MoveFirstToEndOf(BPlusTreeLeafPage *recipient);
+  /** 把最后一个条目搬到 recipient 最前面。 */
+  void MoveLastToFrontOf(BPlusTreeLeafPage *recipient);
 
   /**
-   * @brief for test only return a string representing all keys in
-   * this leaf page formatted as "(tombkey1, tombkey2, ...|key1,key2,key3,...)"
+   * @brief 仅供测试使用。返回一个表示本叶子页所有键的字符串，
+   * 格式为 "(tombkey1, tombkey2, ...|key1,key2,key3,...)"。
    *
    * @return std::string
    */
@@ -112,12 +140,12 @@ class BPlusTreeLeafPage : public BPlusTreePage {
  private:
   page_id_t next_page_id_;
   size_t num_tombstones_;
-  // Fixed-size tombstone buffer (indexes into key_array_ / rid_array_).
+  // 固定大小的墓碑缓冲区（存放的是 key_array_ / rid_array_ 的下标）。
   size_t tombstones_[LEAF_PAGE_TOMB_CNT];
-  // Array members for page data.
+  // 存放页数据的数组。
   KeyType key_array_[LEAF_PAGE_SLOT_CNT];
   ValueType rid_array_[LEAF_PAGE_SLOT_CNT];
-  // (Spring 2025) Feel free to add more fields and helper functions below if needed
+  // （Spring 2025）如果需要，可以在下面自由添加更多字段和辅助函数
 };
 
 }  // namespace bustub

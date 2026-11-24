@@ -17,42 +17,41 @@
 namespace bustub {
 
 /**
- * After creating a new header page from buffer pool, must call initialize
- * method to set default values
- * @param max_depth Max depth in the header page
+ * 从缓冲池新建一个头部页之后，必须调用本初始化方法来设置默认值
+ * @param max_depth 头部页的最大深度
  */
 void ExtendibleHTableHeaderPage::Init(uint32_t max_depth) {
   throw NotImplementedException("ExtendibleHTableHeaderPage is not implemented");
 }
 
 /**
- * Get the directory index that the key is hashed to
+ * 得到键经哈希后落入的目录下标
  *
- * @param hash the hash of the key
- * @return directory index the key is hashed to
+ * @param hash 键的哈希值
+ * @return 键经哈希后落入的目录下标
  */
 auto ExtendibleHTableHeaderPage::HashToDirectoryIndex(uint32_t hash) const -> uint32_t { return 0; }
 
 /**
- * Get the directory page id at an index
+ * 得到某个下标处的目录页 ID
  *
- * @param directory_idx index in the directory page id array
- * @return directory page_id at index
+ * @param directory_idx 目录页 ID 数组中的下标
+ * @return 该下标处的目录页 ID
  */
 auto ExtendibleHTableHeaderPage::GetDirectoryPageId(uint32_t directory_idx) const -> page_id_t { return 0; }
 
 /**
- * @brief Set the directory page id at an index
+ * @brief 设置某个下标处的目录页 ID
  *
- * @param directory_idx index in the directory page id array
- * @param directory_page_id page id of the directory
+ * @param directory_idx 目录页 ID 数组中的下标
+ * @param directory_page_id 目录页的页 ID
  */
 void ExtendibleHTableHeaderPage::SetDirectoryPageId(uint32_t directory_idx, page_id_t directory_page_id) {
   throw NotImplementedException("ExtendibleHTableHeaderPage is not implemented");
 }
 
 /**
- * @brief Get the maximum number of directory page ids the header page could handle
+ * @brief 得到头部页能够容纳的目录页 ID 的最大数量
  */
 auto ExtendibleHTableHeaderPage::MaxSize() const -> uint32_t { return 0; }
 

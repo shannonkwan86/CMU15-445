@@ -14,7 +14,7 @@
 
 namespace bustub {
 /**
- * Constructor
+ * 构造函数
  */
 INDEX_TEMPLATE_ARGUMENTS
 BPLUSTREE_INDEX_TYPE::BPlusTreeIndex(std::unique_ptr<IndexMetadata> &&metadata, BufferPoolManager *buffer_pool_manager)
@@ -26,7 +26,7 @@ BPLUSTREE_INDEX_TYPE::BPlusTreeIndex(std::unique_ptr<IndexMetadata> &&metadata, 
 
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_INDEX_TYPE::InsertEntry(const Tuple &key, RID rid, Transaction *transaction) -> bool {
-  // construct insert index key
+  // 构造要插入的索引键
   KeyType index_key;
   index_key.SetFromKey(key);
 
@@ -35,7 +35,7 @@ auto BPLUSTREE_INDEX_TYPE::InsertEntry(const Tuple &key, RID rid, Transaction *t
 
 INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_INDEX_TYPE::DeleteEntry(const Tuple &key, RID rid, Transaction *transaction) {
-  // construct delete index key
+  // 构造要删除的索引键
   KeyType index_key;
   index_key.SetFromKey(key);
 
@@ -44,7 +44,7 @@ void BPLUSTREE_INDEX_TYPE::DeleteEntry(const Tuple &key, RID rid, Transaction *t
 
 INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_INDEX_TYPE::ScanKey(const Tuple &key, std::vector<RID> *result, Transaction *transaction) {
-  // construct scan index key
+  // 构造要扫描的索引键
   KeyType index_key;
   index_key.SetFromKey(key);
 

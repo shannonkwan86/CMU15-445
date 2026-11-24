@@ -27,12 +27,9 @@ FULL_INDEX_TEMPLATE_ARGUMENTS
 INDEXITERATOR_TYPE::IndexIterator() = default;
 
 FULL_INDEX_TEMPLATE_ARGUMENTS
-INDEXITERATOR_TYPE::IndexIterator(std::shared_ptr<TracedBufferPoolManager> bpm, page_id_t page_id, int index)
-    : bpm_(std::move(bpm)), page_id_(page_id), index_(index) {
-  if (page_id_ != INVALID_PAGE_ID) {
-    guard_ = bpm_->ReadPage(page_id_);
-    AdvanceToValid();
-  }
+INDEXITERATOR_TYPE::IndexIterator(std::shared_ptr<TracedBufferPoolManager> bpm, ReadPageGuard &&guard, int index)
+    : bpm_(std::move(bpm)), guard_(std::move(guard)), page_id_(guard_->GetPageId()), index_(index) {
+  AdvanceToValid();
 }
 
 FULL_INDEX_TEMPLATE_ARGUMENTS

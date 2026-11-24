@@ -35,12 +35,12 @@ class IndexIterator {
   IndexIterator();
 
   /**
-   * @brief 构造一个指向 page_id 页第 index 条的迭代器。
+   * @brief 接管已持有的叶子页读守卫，构造指向第 index 条的迭代器。
    *
-   * 构造时会读入该页并跳过墓碑（必要时顺延到后续叶子页），
-   * 所以传进来的 (page_id, index) 不必正好落在有效条目上。
+   * 构造时会跳过墓碑（必要时顺延到后续叶子页），
+   * 所以传进来的 index 不必正好落在有效条目上。
    */
-  IndexIterator(std::shared_ptr<TracedBufferPoolManager> bpm, page_id_t page_id, int index);
+  IndexIterator(std::shared_ptr<TracedBufferPoolManager> bpm, ReadPageGuard &&guard, int index);
 
   ~IndexIterator();  // NOLINT
 

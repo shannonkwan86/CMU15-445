@@ -360,16 +360,25 @@ void BPLUSTREE_TYPE::FixUnderflow(InternalPage *parent, WritePageGuard &&cur_gua
     return;  // 没有兄弟可借可合，交给上层继续向上收敛
   }
 
-  int index = parent->ValueIndex(cur_guard.GetPageId());
+  page_id_t cur_id = cur_guard.GetPageId();
+  int index = parent->ValueIndex(cur_id);
   if (index < 0) {
     return;
   }
 
   int sib_index = (index > 0) ? index - 1 : index + 1;
   page_id_t sib_id = parent->ValueAt(sib_index);
-  WritePageGuard sib_guard = bpm_->WritePage(sib_id);
-
   bool cur_is_left = index < sib_index;
+  WritePageGuard sib_guard;
+  if (cur_is_left) {
+    sib_guard = bpm_->WritePage(sib_id);
+  } else {
+    // 保持同层「先左后右」锁序，避免与迭代器的向右扫描形成 AB-BA 死锁
+    cur_guard.Drop();
+    sib_guard = bpm_->WritePage(sib_id);
+    cur_guard = bpm_->WritePage(cur_id);
+  }
+
   auto cur_page = cur_guard.AsMut<BPlusTreePage>();
 
   if (cur_page->IsLeafPage()) {

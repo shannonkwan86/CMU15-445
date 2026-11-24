@@ -16,16 +16,16 @@
 namespace bustub {
 
 /**
- * Creates a new nested index join executor.
- * @param exec_ctx the context that the nested index join should be performed in
- * @param plan the nested index join plan to be executed
- * @param child_executor the outer table
+ * 创建一个新的嵌套索引连接执行器。
+ * @param exec_ctx 执行器上下文（ExecutorContext）
+ * @param plan 待执行的嵌套索引连接计划节点
+ * @param child_executor 外表（左表）对应的子执行器
  */
 NestedIndexJoinExecutor::NestedIndexJoinExecutor(ExecutorContext *exec_ctx, const NestedIndexJoinPlanNode *plan,
                                                  std::unique_ptr<AbstractExecutor> &&child_executor)
     : AbstractExecutor(exec_ctx) {
   if (plan->GetJoinType() != JoinType::LEFT && plan->GetJoinType() != JoinType::INNER) {
-    // Note for Spring 2025: You ONLY need to implement left join and inner join.
+    // 只需实现 LEFT JOIN 和 INNER JOIN
     throw bustub::NotImplementedException(fmt::format("join type {} not supported", plan->GetJoinType()));
   }
   UNIMPLEMENTED("TODO(P3): Add implementation.");

@@ -23,7 +23,7 @@
 namespace bustub {
 
 /**
- * HashJoinExecutor executes a nested-loop JOIN on two tables.
+ * HashJoinExecutor 对两张表执行哈希连接（Hash Join）。
  */
 class HashJoinExecutor : public AbstractExecutor {
  public:
@@ -35,11 +35,11 @@ class HashJoinExecutor : public AbstractExecutor {
   auto Next(std::vector<bustub::Tuple> *tuple_batch, std::vector<bustub::RID> *rid_batch, size_t batch_size)
       -> bool override;
 
-  /** @return The output schema for the join */
+  /** @return 哈希连接的输出 Schema */
   auto GetOutputSchema() const -> const Schema & override { return plan_->OutputSchema(); };
 
  private:
-  /** The HashJoin plan node to be executed. */
+  /** 待执行的 HashJoin 计划节点 */
   const HashJoinPlanNode *plan_;
 };
 

@@ -23,8 +23,8 @@
 namespace bustub {
 
 /**
- * InsertExecutor executes an insert on a table.
- * Inserted values are always pulled from a child executor.
+ * InsertExecutor 对表执行插入操作。
+ * 待插入的值总是从子执行器（child executor）拉取。
  */
 class InsertExecutor : public AbstractExecutor {
  public:
@@ -36,11 +36,11 @@ class InsertExecutor : public AbstractExecutor {
   auto Next(std::vector<bustub::Tuple> *tuple_batch, std::vector<bustub::RID> *rid_batch, size_t batch_size)
       -> bool override;
 
-  /** @return The output schema for the insert */
+  /** @return 插入操作的输出 Schema */
   auto GetOutputSchema() const -> const Schema & override { return plan_->OutputSchema(); };
 
  private:
-  /** The insert plan node to be executed*/
+  /** 待执行的插入计划节点 */
   const InsertPlanNode *plan_;
 };
 

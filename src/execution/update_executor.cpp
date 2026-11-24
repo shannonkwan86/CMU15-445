@@ -18,10 +18,10 @@
 namespace bustub {
 
 /**
- * Construct a new UpdateExecutor instance.
- * @param exec_ctx The executor context
- * @param plan The update plan to be executed
- * @param child_executor The child executor that feeds the update
+ * 构造一个新的 UpdateExecutor 实例。
+ * @param exec_ctx 执行器上下文（ExecutorContext）
+ * @param plan 待执行的更新计划节点
+ * @param child_executor 为更新操作提供数据的子执行器
  */
 UpdateExecutor::UpdateExecutor(ExecutorContext *exec_ctx, const UpdatePlanNode *plan,
                                std::unique_ptr<AbstractExecutor> &&child_executor)
@@ -29,18 +29,18 @@ UpdateExecutor::UpdateExecutor(ExecutorContext *exec_ctx, const UpdatePlanNode *
   UNIMPLEMENTED("TODO(P3): Add implementation.");
 }
 
-/** Initialize the update */
+/** 初始化更新操作 */
 void UpdateExecutor::Init() { UNIMPLEMENTED("TODO(P3): Add implementation."); }
 
 /**
- * Yield the number of rows updated in the table.
- * @param[out] tuple_batch The tuple batch with one integer indicating the number of rows updated in the table
- * @param[out] rid_batch The next tuple RID batch produced by the update (ignore, not used)
- * @param batch_size The number of tuples to be included in the batch (default: BUSTUB_BATCH_SIZE)
- * @return `true` if a tuple was produced, `false` if there are no more tuples
+ * 产出表中被更新的行数。
+ * @param[out] tuple_batch 包含单个整数的 Tuple 批次，表示表中被更新的总行数
+ * @param[out] rid_batch 更新操作产出的下一批 RID（忽略，不使用）
+ * @param batch_size 本批最多包含的 Tuple 数量（默认 BUSTUB_BATCH_SIZE）
+ * @return 如果产出了 Tuple 返回 `true`，如果没有更多 Tuple 返回 `false`
  *
- * NOTE: UpdateExecutor::Next() does not use the `rid_batch` out-parameter.
- * NOTE: UpdateExecutor::Next() returns true with the number of updated rows produced only once.
+ * NOTE: UpdateExecutor::Next() 不使用输出参数 `rid_batch`。
+ * NOTE: UpdateExecutor::Next() 只会返回一次 `true` 并产出更新行数。
  */
 auto UpdateExecutor::Next(std::vector<bustub::Tuple> *tuple_batch, std::vector<bustub::RID> *rid_batch,
                           size_t batch_size) -> bool {

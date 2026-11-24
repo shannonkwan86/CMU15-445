@@ -13,9 +13,8 @@
 #include "execution/plans/abstract_plan.h"
 #include "optimizer/optimizer.h"
 
-// Note for 2023 Fall: You can add all optimizer rule implementations and apply the rules as you want in this file.
-// Note that for some test cases, we force using starter rules, so that the configuration here won't take effects.
-// Starter rule can be forcibly enabled by `set force_optimizer_starter_rule=yes`.
+// 你可以把自定义优化器规则的实现放到此文件中，并按需编排规则的应用顺序。
+// 注意：部分测试用例会强制使用 starter 规则（`set force_optimizer_starter_rule=yes`），此时本文件中的配置不会生效。
 
 namespace bustub {
 

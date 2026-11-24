@@ -24,18 +24,18 @@ ExternalMergeSortExecutor<K>::ExternalMergeSortExecutor(ExecutorContext *exec_ct
   UNIMPLEMENTED("TODO(P3): Add implementation.");
 }
 
-/** Initialize the external merge sort */
+/** 初始化外部归并排序 */
 template <size_t K>
 void ExternalMergeSortExecutor<K>::Init() {
   UNIMPLEMENTED("TODO(P3): Add implementation.");
 }
 
 /**
- * Yield the next tuple batch from the external merge sort.
- * @param[out] tuple_batch The next tuple batch produced by the external merge sort.
- * @param[out] rid_batch The next tuple RID batch produced by the external merge sort.
- * @param batch_size The number of tuples to be included in the batch (default: BUSTUB_BATCH_SIZE)
- * @return `true` if a tuple was produced, `false` if there are no more tuples
+ * 从外部归并排序中产出下一批 Tuple。
+ * @param[out] tuple_batch 外部归并排序产出的下一批 Tuple
+ * @param[out] rid_batch 外部归并排序产出的下一批 RID
+ * @param batch_size 本批最多包含的 Tuple 数量（默认 BUSTUB_BATCH_SIZE）
+ * @return 如果产出了 Tuple 返回 `true`，如果没有更多 Tuple 返回 `false`
  */
 template <size_t K>
 auto ExternalMergeSortExecutor<K>::Next(std::vector<bustub::Tuple> *tuple_batch, std::vector<bustub::RID> *rid_batch,

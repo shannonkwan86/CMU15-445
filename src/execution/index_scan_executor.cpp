@@ -16,9 +16,9 @@
 namespace bustub {
 
 /**
- * Creates a new index scan executor.
- * @param exec_ctx the executor context
- * @param plan the index scan plan to be executed
+ * 创建一个新的索引扫描执行器。
+ * @param exec_ctx 执行器上下文（ExecutorContext）
+ * @param plan 待执行的索引扫描计划节点
  */
 IndexScanExecutor::IndexScanExecutor(ExecutorContext *exec_ctx, const IndexScanPlanNode *plan)
     : AbstractExecutor(exec_ctx) {

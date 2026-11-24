@@ -23,14 +23,14 @@
 namespace bustub {
 
 /**
- * NestedIndexJoinExecutor executes index join operations.
+ * NestedIndexJoinExecutor 执行基于索引的嵌套循环连接（Nested Index Join）。
  */
 class NestedIndexJoinExecutor : public AbstractExecutor {
  public:
   NestedIndexJoinExecutor(ExecutorContext *exec_ctx, const NestedIndexJoinPlanNode *plan,
                           std::unique_ptr<AbstractExecutor> &&child_executor);
 
-  /** @return The output schema for the nested index join */
+  /** @return 嵌套索引连接的输出 Schema */
   auto GetOutputSchema() const -> const Schema & override { return plan_->OutputSchema(); }
 
   void Init() override;
@@ -39,7 +39,7 @@ class NestedIndexJoinExecutor : public AbstractExecutor {
       -> bool override;
 
  private:
-  /** The nested index join plan node. */
+  /** 待执行的嵌套索引连接计划节点 */
   const NestedIndexJoinPlanNode *plan_;
 };
 }  // namespace bustub

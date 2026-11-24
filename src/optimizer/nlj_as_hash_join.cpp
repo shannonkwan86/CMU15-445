@@ -30,14 +30,13 @@
 namespace bustub {
 
 /**
- * @brief optimize nested loop join into hash join.
- * In the starter code, we will check NLJs with exactly one equal condition. You can further support optimizing joins
- * with multiple eq conditions.
+ * @brief 将 NestedLoopJoin 优化为 HashJoin。
+ * 初始框架仅考虑单个等值条件的 NLJ，你可以进一步支持多个等值条件（AND 连接）的 Join 优化。
  */
 auto Optimizer::OptimizeNLJAsHashJoin(const AbstractPlanNodeRef &plan) -> AbstractPlanNodeRef {
-  // TODO(student): implement NestedLoopJoin -> HashJoin optimizer rule
-  // Note for Spring 2025: You should support join keys of any number of conjunction of equi-conditions:
-  // E.g. <column expr> = <column expr> AND <column expr> = <column expr> AND ...
+  // TODO(student): 实现 NestedLoopJoin -> HashJoin 优化器规则
+  // 需支持任意数量的等值条件合取（AND 连接）作为连接键：
+  // 例如 <column expr> = <column expr> AND <column expr> = <column expr> AND ...
   return plan;
 }
 

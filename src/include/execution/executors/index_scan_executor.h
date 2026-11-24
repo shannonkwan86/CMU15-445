@@ -23,7 +23,7 @@
 namespace bustub {
 
 /**
- * IndexScanExecutor executes an index scan over a table.
+ * IndexScanExecutor 通过索引对表执行索引扫描。
  */
 
 class IndexScanExecutor : public AbstractExecutor {
@@ -38,7 +38,7 @@ class IndexScanExecutor : public AbstractExecutor {
       -> bool override;
 
  private:
-  /** The index scan plan node to be executed. */
+  /** 待执行的索引扫描计划节点 */
   const IndexScanPlanNode *plan_;
 };
 }  // namespace bustub

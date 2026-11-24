@@ -17,23 +17,23 @@
 namespace bustub {
 
 /**
- * Construct a new WindowFunctionExecutor instance.
- * @param exec_ctx The executor context
- * @param plan The window aggregation plan to be executed
+ * 构造一个新的 WindowFunctionExecutor 实例。
+ * @param exec_ctx 执行器上下文（ExecutorContext）
+ * @param plan 待执行的窗口聚合计划节点
  */
 WindowFunctionExecutor::WindowFunctionExecutor(ExecutorContext *exec_ctx, const WindowFunctionPlanNode *plan,
                                                std::unique_ptr<AbstractExecutor> &&child_executor)
     : AbstractExecutor(exec_ctx), plan_(plan), child_executor_(std::move(child_executor)) {}
 
-/** Initialize the window aggregation */
+/** 初始化窗口聚合算子 */
 void WindowFunctionExecutor::Init() { throw NotImplementedException("WindowFunctionExecutor is not implemented"); }
 
 /**
- * Yield the next tuple batch from the window aggregation.
- * @param[out] tuple_batch The next tuple batch produced by the window aggregation
- * @param[out] rid_batch The next tuple RID batch produced by the window aggregation
- * @param batch_size The number of tuples to be included in the batch (default: BUSTUB_BATCH_SIZE)
- * @return `true` if a tuple was produced, `false` if there are no more tuples
+ * 从窗口聚合算子中产出下一批 Tuple。
+ * @param[out] tuple_batch 窗口聚合算子产出的下一批 Tuple
+ * @param[out] rid_batch 窗口聚合算子产出的下一批 RID
+ * @param batch_size 本批最多包含的 Tuple 数量（默认 BUSTUB_BATCH_SIZE）
+ * @return 如果产出了 Tuple 返回 `true`，如果没有更多 Tuple 返回 `false`
  */
 auto WindowFunctionExecutor::Next(std::vector<bustub::Tuple> *tuple_batch, std::vector<bustub::RID> *rid_batch,
                                   size_t batch_size) -> bool {

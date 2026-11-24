@@ -23,17 +23,16 @@
 namespace bustub {
 
 /**
- * The WindowFunctionExecutor executor executes a window function for columns using window function.
+ * WindowFunctionExecutor 对包含窗口函数的列执行窗口函数计算。
  *
- * Window function is different from normal aggregation as it outputs one row for each inputting rows,
- * and can be combined with normal selected columns. The columns in WindowFunctionPlanNode contains both
- * normal selected columns and placeholder columns for window functions.
+ * 窗口函数与普通聚合不同：它为每一条输入行都输出一行，并且可以与普通 SELECT 列组合输出。
+ * WindowFunctionPlanNode 中的 columns 既包含普通列，也包含窗口函数列的占位符。
  *
- * For example, if we have a query like:
+ * 例如，对于如下查询：
  *    SELECT 0.1, 0.2, SUM(0.3) OVER (PARTITION BY 0.2 ORDER BY 0.3), SUM(0.4) OVER (PARTITION BY 0.1 ORDER BY 0.2,0.3)
  *      FROM table;
  *
- * The WindowFunctionPlanNode contains following structure:
+ * WindowFunctionPlanNode 包含如下结构：
  *    columns: std::vector<AbstractExpressionRef>{0.1, 0.2, 0.-1(placeholder), 0.-1(placeholder)}
  *    window_functions_: {
  *      3: {
@@ -50,15 +49,13 @@ namespace bustub {
  *      }
  *    }
  *
- * Your executor should use child executor and exprs in columns to produce selected columns except for window
- * function columns, and use window_agg_indexes, partition_bys, order_bys, functions and window_agg_types to
- * generate window function columns results. Directly use placeholders for window function columns in columns is
- * not allowed, as it contains invalid column id.
+ * 你的执行器应通过子执行器和 columns 中的表达式产出普通列，
+ * 并利用 window_agg_indexes、partition_bys、order_bys、functions 和 window_agg_types 计算窗口函数列的结果。
+ * 不允许直接对 columns 中的窗口函数占位符求值，因为其中包含无效的列 ID。
  *
- * Your WindowFunctionExecutor does not need to support specified window frames (eg: 1 preceding and 1 following).
- * You can assume that all window frames are UNBOUNDED FOLLOWING AND CURRENT ROW when there is ORDER BY clause, and
- * UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING when there is no ORDER BY clause.
- *
+ * WindowFunctionExecutor 不需要支持自定义窗口帧（例如 1 PRECEDING AND 1 FOLLOWING）。
+ * 可以假设：当存在 ORDER BY 子句时窗口帧为 UNBOUNDED PRECEDING AND CURRENT ROW；
+ * 当不存在 ORDER BY 子句时窗口帧为 UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING。
  */
 class WindowFunctionExecutor : public AbstractExecutor {
  public:
@@ -70,14 +67,14 @@ class WindowFunctionExecutor : public AbstractExecutor {
   auto Next(std::vector<bustub::Tuple> *tuple_batch, std::vector<bustub::RID> *rid_batch, size_t batch_size)
       -> bool override;
 
-  /** @return The output schema for the window aggregation plan */
+  /** @return 窗口聚合计划节点的输出 Schema */
   auto GetOutputSchema() const -> const Schema & override { return plan_->OutputSchema(); }
 
  private:
-  /** The window aggregation plan node to be executed */
+  /** 待执行的窗口聚合计划节点 */
   const WindowFunctionPlanNode *plan_;
 
-  /** The child executor from which tuples are obtained */
+  /** 提供输入 Tuple 的子执行器 */
   std::unique_ptr<AbstractExecutor> child_executor_;
 };
 }  // namespace bustub

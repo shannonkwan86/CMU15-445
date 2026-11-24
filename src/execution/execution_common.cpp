@@ -22,21 +22,21 @@ namespace bustub {
 
 TupleComparator::TupleComparator(std::vector<OrderBy> order_bys) : order_bys_(std::move(order_bys)) {}
 
-/** TODO(P3): Implement the comparison method */
+/** TODO(P3): 实现比较方法 */
 auto TupleComparator::operator()(const SortEntry &entry_a, const SortEntry &entry_b) const -> bool { return false; }
 
 /**
- * Generate sort key for a tuple based on the order by expressions.
+ * 根据 ORDER BY 表达式为 Tuple 生成排序键（SortKey）。
  *
- * TODO(P3): Implement this method.
+ * TODO(P3): 实现此方法。
  */
 auto GenerateSortKey(const Tuple &tuple, const std::vector<OrderBy> &order_bys, const Schema &schema) -> SortKey {
   return {};
 }
 
 /**
- * Above are all you need for P3.
- * You can ignore the remaining part of this file until P4.
+ * 以上是 P3 所需的全部内容。
+ * 本文件其余部分属于 P4，做 P3 时可先忽略。
  */
 
 /**

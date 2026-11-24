@@ -18,10 +18,10 @@
 namespace bustub {
 
 /**
- * Construct a new AggregationExecutor instance.
- * @param exec_ctx The executor context
- * @param plan The insert plan to be executed
- * @param child_executor The child executor from which inserted tuples are pulled (may be `nullptr`)
+ * 构造一个新的 AggregationExecutor 实例。
+ * @param exec_ctx 执行器上下文（ExecutorContext）
+ * @param plan 待执行的聚合计划节点
+ * @param child_executor 提供输入 Tuple 的子执行器（可能为 `nullptr`）
  */
 AggregationExecutor::AggregationExecutor(ExecutorContext *exec_ctx, const AggregationPlanNode *plan,
                                          std::unique_ptr<AbstractExecutor> &&child_executor)
@@ -29,15 +29,15 @@ AggregationExecutor::AggregationExecutor(ExecutorContext *exec_ctx, const Aggreg
   UNIMPLEMENTED("TODO(P3): Add implementation.");
 }
 
-/** Initialize the aggregation */
+/** 初始化聚合算子 */
 void AggregationExecutor::Init() { UNIMPLEMENTED("TODO(P3): Add implementation."); }
 
 /**
- * Yield the next tuple batch from the aggregation.
- * @param[out] tuple_batch The next batch of tuples produced by the aggregation
- * @param[out] rid_batch The next batch of tuple RIDs produced by the aggregation
- * @param batch_size The number of tuples to be included in the batch (default: BUSTUB_BATCH_SIZE)
- * @return `true` if any tuples were produced, `false` if there are no more tuples
+ * 从聚合算子中产出下一批 Tuple。
+ * @param[out] tuple_batch 聚合算子产出的下一批 Tuple
+ * @param[out] rid_batch 聚合算子产出的下一批 RID
+ * @param batch_size 本批最多包含的 Tuple 数量（默认 BUSTUB_BATCH_SIZE）
+ * @return 如果产出了 Tuple 返回 `true`，如果没有更多 Tuple 返回 `false`
  */
 
 auto AggregationExecutor::Next(std::vector<bustub::Tuple> *tuple_batch, std::vector<bustub::RID> *rid_batch,
@@ -45,7 +45,7 @@ auto AggregationExecutor::Next(std::vector<bustub::Tuple> *tuple_batch, std::vec
   UNIMPLEMENTED("TODO(P3): Add implementation.");
 }
 
-/** Do not use or remove this function; otherwise, you will get zero points. */
+/** 不要调用或删除此函数，否则将得零分。 */
 auto AggregationExecutor::GetChildExecutor() const -> const AbstractExecutor * { return child_executor_.get(); }
 
 }  // namespace bustub

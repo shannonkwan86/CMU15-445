@@ -24,8 +24,8 @@
 namespace bustub {
 
 /**
- * DeletedExecutor executes a delete on a table.
- * Deleted values are always pulled from a child.
+ * DeleteExecutor 对表执行删除操作。
+ * 待删除的记录总是从子执行器拉取。
  */
 class DeleteExecutor : public AbstractExecutor {
  public:
@@ -37,14 +37,14 @@ class DeleteExecutor : public AbstractExecutor {
   auto Next(std::vector<bustub::Tuple> *tuple_batch, std::vector<bustub::RID> *rid_batch, size_t batch_size)
       -> bool override;
 
-  /** @return The output schema for the delete */
+  /** @return 删除操作的输出 Schema */
   auto GetOutputSchema() const -> const Schema & override { return plan_->OutputSchema(); };
 
  private:
-  /** The delete plan node to be executed */
+  /** 待执行的删除计划节点 */
   const DeletePlanNode *plan_;
 
-  /** The child executor from which RIDs for deleted tuples are pulled */
+  /** 提供待删除 Tuple 的 RID 的子执行器 */
   std::unique_ptr<AbstractExecutor> child_executor_;
 };
 }  // namespace bustub

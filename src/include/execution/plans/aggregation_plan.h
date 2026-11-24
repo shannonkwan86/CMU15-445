@@ -25,24 +25,23 @@
 
 namespace bustub {
 
-/** AggregationType enumerates all the possible aggregation functions in our system */
+/** AggregationType 枚举系统中支持的所有聚合函数类型 */
 enum class AggregationType { CountStarAggregate, CountAggregate, SumAggregate, MinAggregate, MaxAggregate };
 
 /**
- * AggregationPlanNode represents the various SQL aggregation functions.
- * For example, COUNT(), SUM(), MIN() and MAX().
+ * AggregationPlanNode 表示各种 SQL 聚合函数，例如 COUNT()、SUM()、MIN() 和 MAX()。
  *
- * NOTE: To simplify this project, AggregationPlanNode must always have exactly one child.
+ * NOTE: 为简化本项目，AggregationPlanNode 始终有且仅有一个子节点。
  */
 class AggregationPlanNode : public AbstractPlanNode {
  public:
   /**
-   * Construct a new AggregationPlanNode.
-   * @param output_schema The output format of this plan node
-   * @param child The child plan to aggregate data over
-   * @param group_bys The group by clause of the aggregation
-   * @param aggregates The expressions that we are aggregating
-   * @param agg_types The types that we are aggregating
+   * 构造一个新的 AggregationPlanNode。
+   * @param output_schema 该计划节点的输出 Schema
+   * @param child 提供待聚合数据的子计划节点
+   * @param group_bys 聚合的 GROUP BY 表达式列表
+   * @param aggregates 待聚合的表达式列表
+   * @param agg_types 对应的聚合函数类型列表
    */
   AggregationPlanNode(SchemaRef output_schema, AbstractPlanNodeRef child, std::vector<AbstractExpressionRef> group_bys,
                       std::vector<AbstractExpressionRef> aggregates, std::vector<AggregationType> agg_types)
@@ -51,28 +50,28 @@ class AggregationPlanNode : public AbstractPlanNode {
         aggregates_(std::move(aggregates)),
         agg_types_(std::move(agg_types)) {}
 
-  /** @return The type of the plan node */
+  /** @return 计划节点类型 */
   auto GetType() const -> PlanType override { return PlanType::Aggregation; }
 
-  /** @return the child of this aggregation plan node */
+  /** @return 该聚合计划节点的子节点 */
   auto GetChildPlan() const -> AbstractPlanNodeRef {
     BUSTUB_ASSERT(GetChildren().size() == 1, "Aggregation expected to only have one child.");
     return GetChildAt(0);
   }
 
-  /** @return The idx'th group by expression */
+  /** @return 第 idx 个 GROUP BY 表达式 */
   auto GetGroupByAt(uint32_t idx) const -> const AbstractExpressionRef & { return group_bys_[idx]; }
 
-  /** @return The group by expressions */
+  /** @return 所有 GROUP BY 表达式 */
   auto GetGroupBys() const -> const std::vector<AbstractExpressionRef> & { return group_bys_; }
 
-  /** @return The idx'th aggregate expression */
+  /** @return 第 idx 个聚合表达式 */
   auto GetAggregateAt(uint32_t idx) const -> const AbstractExpressionRef & { return aggregates_[idx]; }
 
-  /** @return The aggregate expressions */
+  /** @return 所有聚合表达式 */
   auto GetAggregates() const -> const std::vector<AbstractExpressionRef> & { return aggregates_; }
 
-  /** @return The aggregate types */
+  /** @return 所有聚合类型 */
   auto GetAggregateTypes() const -> const std::vector<AggregationType> & { return agg_types_; }
 
   static auto InferAggSchema(const std::vector<AbstractExpressionRef> &group_bys,
@@ -81,26 +80,26 @@ class AggregationPlanNode : public AbstractPlanNode {
 
   BUSTUB_PLAN_NODE_CLONE_WITH_CHILDREN(AggregationPlanNode);
 
-  /** The GROUP BY expressions */
+  /** GROUP BY 表达式列表 */
   std::vector<AbstractExpressionRef> group_bys_;
-  /** The aggregation expressions */
+  /** 聚合表达式列表 */
   std::vector<AbstractExpressionRef> aggregates_;
-  /** The aggregation types */
+  /** 聚合类型列表 */
   std::vector<AggregationType> agg_types_;
 
  protected:
   auto PlanNodeToString() const -> std::string override;
 };
 
-/** AggregateKey represents a key in an aggregation operation */
+/** AggregateKey 表示聚合操作中的分组键 */
 struct AggregateKey {
-  /** The group-by values */
+  /** GROUP BY 各列的值 */
   std::vector<Value> group_bys_;
 
   /**
-   * Compares two aggregate keys for equality. TODO(p3): you may need to change this to handle NULLs.
-   * @param other the other aggregate key to be compared with
-   * @return `true` if both aggregate keys have equivalent group-by expressions, `false` otherwise
+   * 比较两个 AggregateKey 是否相等。TODO(p3): 你可能需要修改这里以正确处理 NULL。
+   * @param other 用于比较的另一个 AggregateKey
+   * @return 若两个 AggregateKey 的所有分组值等价则返回 `true`，否则返回 `false`
    */
   auto operator==(const AggregateKey &other) const -> bool {
     for (uint32_t i = 0; i < other.group_bys_.size(); i++) {
@@ -112,9 +111,9 @@ struct AggregateKey {
   }
 };
 
-/** AggregateValue represents a value for each of the running aggregates */
+/** AggregateValue 表示各聚合函数的当前累计结果 */
 struct AggregateValue {
-  /** The aggregate values */
+  /** 各聚合值列表 */
   std::vector<Value> aggregates_;
 };
 
@@ -122,7 +121,7 @@ struct AggregateValue {
 
 namespace std {
 
-/** Implements std::hash on AggregateKey */
+/** 为 AggregateKey 实现 std::hash */
 template <>
 struct hash<bustub::AggregateKey> {
   auto operator()(const bustub::AggregateKey &agg_key) const -> std::size_t {

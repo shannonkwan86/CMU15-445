@@ -23,7 +23,7 @@
 namespace bustub {
 
 /**
- * NestedLoopJoinExecutor executes a nested-loop JOIN on two tables.
+ * NestedLoopJoinExecutor 对两张表执行嵌套循环连接（Nested-Loop Join）。
  */
 class NestedLoopJoinExecutor : public AbstractExecutor {
  public:
@@ -36,11 +36,11 @@ class NestedLoopJoinExecutor : public AbstractExecutor {
   auto Next(std::vector<bustub::Tuple> *tuple_batch, std::vector<bustub::RID> *rid_batch, size_t batch_size)
       -> bool override;
 
-  /** @return The output schema for the insert */
+  /** @return 嵌套循环连接的输出 Schema */
   auto GetOutputSchema() const -> const Schema & override { return plan_->OutputSchema(); };
 
  private:
-  /** The NestedLoopJoin plan node to be executed. */
+  /** 待执行的 NestedLoopJoin 计划节点 */
   const NestedLoopJoinPlanNode *plan_;
 };
 

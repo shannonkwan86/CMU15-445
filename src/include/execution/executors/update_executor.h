@@ -50,5 +50,8 @@ class UpdateExecutor : public AbstractExecutor {
 
   /** 提供待更新记录的子执行器 */
   std::unique_ptr<AbstractExecutor> child_executor_;
+
+  /** 标记是否已执行过更新（Update::Next 只产出一次结果） */
+  bool is_executed_{false};
 };
 }  // namespace bustub

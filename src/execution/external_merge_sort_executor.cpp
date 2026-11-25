@@ -20,8 +20,6 @@ namespace bustub {
 
 namespace {
 
-constexpr size_t SORT_CHUNK_BYTES = BUSTUB_PAGE_SIZE * 4;
-
 class RunWriter {
  public:
   explicit RunWriter(BufferPoolManager *bpm) : bpm_(bpm) {}
@@ -128,6 +126,13 @@ ExternalMergeSortExecutor<K>::ExternalMergeSortExecutor(ExecutorContext *exec_ct
                                                         std::unique_ptr<AbstractExecutor> &&child_executor)
     : AbstractExecutor(exec_ctx), plan_(plan), cmp_(plan->GetOrderBy()), child_executor_(std::move(child_executor)) {}
 
+template <size_t K>
+ExternalMergeSortExecutor<K>::~ExternalMergeSortExecutor() {
+  if (sorted_run_.has_value()) {
+    sorted_run_->Clear();
+  }
+}
+
 /** 初始化外部归并排序 */
 template <size_t K>
 void ExternalMergeSortExecutor<K>::Init() {
@@ -141,10 +146,10 @@ void ExternalMergeSortExecutor<K>::Init() {
   const auto &order_bys = plan_->GetOrderBy();
   const auto &schema = child_executor_->GetOutputSchema();
 
-  // 1. 分块内排：每次攒满 SORT_CHUNK_BYTES 排好序后写入临时页，形成初始有序 run
+  // 1. 单页分块内排：每次攒满单个 IntermediateResultPage 后排序并写入临时页，形成初始有序 run
   std::vector<MergeSortRun> runs;
   std::vector<SortEntry> entries;
-  size_t chunk_bytes = 0;
+  uint32_t page_bytes = 0;
 
   auto flush_entries = [&]() {
     if (entries.empty()) {
@@ -157,19 +162,20 @@ void ExternalMergeSortExecutor<K>::Init() {
     }
     runs.push_back(writer.Finish());
     entries.clear();
-    chunk_bytes = 0;
+    page_bytes = 0;
   };
 
   std::vector<Tuple> child_tuples{};
   std::vector<RID> child_rids{};
   while (child_executor_->Next(&child_tuples, &child_rids, BUSTUB_BATCH_SIZE)) {
     for (auto &tuple : child_tuples) {
-      chunk_bytes += sizeof(int32_t) + tuple.GetLength();
-      auto key = GenerateSortKey(tuple, order_bys, schema);
-      entries.emplace_back(std::move(key), std::move(tuple));
-      if (chunk_bytes >= SORT_CHUNK_BYTES) {
+      const uint32_t need_bytes = sizeof(uint32_t) + IntermediateResultPage::TupleStorageBytes(tuple);
+      if (!entries.empty() && page_bytes + need_bytes > IntermediateResultPage::PAYLOAD_SIZE) {
         flush_entries();
       }
+      page_bytes += need_bytes;
+      auto key = GenerateSortKey(tuple, order_bys, schema);
+      entries.emplace_back(std::move(key), std::move(tuple));
     }
   }
   flush_entries();
@@ -220,6 +226,11 @@ auto ExternalMergeSortExecutor<K>::Next(std::vector<bustub::Tuple> *tuple_batch,
     tuple_batch->push_back(*iter_);
     rid_batch->emplace_back();
     ++iter_;
+  }
+
+  if (iter_ == end) {
+    sorted_run_->Clear();
+    sorted_run_.reset();
   }
 
   return !tuple_batch->empty();

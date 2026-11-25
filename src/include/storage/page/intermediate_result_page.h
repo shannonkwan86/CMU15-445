@@ -17,13 +17,20 @@ namespace bustub {
  */
 class IntermediateResultPage {
  public:
+  static constexpr uint32_t PAYLOAD_SIZE = BUSTUB_PAGE_SIZE - 2 * sizeof(uint32_t);
+
+  static auto TupleStorageBytes(const Tuple &tuple) -> uint32_t {
+    const uint32_t raw_bytes = sizeof(int32_t) + tuple.GetLength();
+    return (raw_bytes + 3U) & ~3U;
+  }
+
   void Init() {
     num_tuples_ = 0;
-    free_end_ = sizeof(payload_);
+    free_end_ = PAYLOAD_SIZE;
   }
 
   auto Append(const Tuple &tuple) -> bool {
-    const uint32_t tuple_bytes = sizeof(int32_t) + tuple.GetLength();
+    const uint32_t tuple_bytes = TupleStorageBytes(tuple);
     const uint32_t dir_bytes = (num_tuples_ + 1) * sizeof(uint32_t);
     if (free_end_ < dir_bytes + tuple_bytes) {
       return false;
@@ -47,7 +54,7 @@ class IntermediateResultPage {
  private:
   uint32_t num_tuples_;
   uint32_t free_end_;
-  char payload_[BUSTUB_PAGE_SIZE - 2 * sizeof(uint32_t)];
+  char payload_[PAYLOAD_SIZE];
 };
 
 static_assert(sizeof(IntermediateResultPage) == BUSTUB_PAGE_SIZE);

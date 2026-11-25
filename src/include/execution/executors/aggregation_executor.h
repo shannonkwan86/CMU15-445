@@ -69,18 +69,49 @@ class SimpleAggregationHashTable {
    */
   void CombineAggregateValues(AggregateValue *result, const AggregateValue &input) {
     for (uint32_t i = 0; i < agg_exprs_.size(); i++) {
+      auto &res = result->aggregates_[i];
+      const auto &in = input.aggregates_[i];
+
+      if (agg_types_[i] == AggregationType::CountStarAggregate) {
+        res = res.Add(ValueFactory::GetIntegerValue(1));
+        continue;
+      }
+
+      if (in.IsNull()) {
+        continue;
+      }
+
+      if (agg_types_[i] == AggregationType::CountAggregate) {
+        res = res.IsNull() ? ValueFactory::GetIntegerValue(1) : res.Add(ValueFactory::GetIntegerValue(1));
+        continue;
+      }
+
+      if (res.IsNull()) {
+        res = in;
+        continue;
+      }
+
       switch (agg_types_[i]) {
-        case AggregationType::CountStarAggregate:
-        case AggregationType::CountAggregate:
         case AggregationType::SumAggregate:
+          res = res.Add(in);
+          break;
         case AggregationType::MinAggregate:
+          res = res.Min(in);
+          break;
         case AggregationType::MaxAggregate:
+          res = res.Max(in);
+          break;
+        default:
           break;
       }
     }
-
-    UNIMPLEMENTED("TODO(P3): Add implementation.");
   }
+
+  /**
+   * 为无 GROUP BY 的空表插入默认初始聚合行（例如 COUNT(*) 返回 0，其余返回 NULL）。
+   * @param agg_key 空分组键
+   */
+  void InsertDefault(const AggregateKey &agg_key) { ht_.emplace(agg_key, GenerateInitialAggregateValue()); }
 
   /**
    * 将键值对插入哈希表，并与当前已有的聚合值合并。
@@ -188,9 +219,9 @@ class AggregationExecutor : public AbstractExecutor {
   std::unique_ptr<AbstractExecutor> child_executor_;
 
   /** 简化版聚合哈希表 */
-  // TODO(Student): Uncomment SimpleAggregationHashTable aht_;
+  SimpleAggregationHashTable aht_;
 
   /** 简化版聚合哈希表迭代器 */
-  // TODO(Student): Uncomment SimpleAggregationHashTable::Iterator aht_iterator_;
+  SimpleAggregationHashTable::Iterator aht_iterator_;
 };
 }  // namespace bustub

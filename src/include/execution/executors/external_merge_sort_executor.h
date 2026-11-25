@@ -14,6 +14,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 #include "common/config.h"
@@ -47,44 +48,68 @@ class MergeSortRun {
     /**
      * 将迭代器推进到下一条 Tuple。如果当前排序页已遍历完，则移动到下一个排序页。
      */
-    auto operator++() -> Iterator & { UNIMPLEMENTED("TODO(P3): Add implementation."); }
+    auto operator++() -> Iterator & {
+      ++tuple_idx_;
+      auto guard = run_->bpm_->ReadPage(run_->pages_[page_idx_]);
+      if (tuple_idx_ >= guard.As<IntermediateResultPage>()->GetNumTuples()) {
+        ++page_idx_;
+        tuple_idx_ = 0;
+      }
+      return *this;
+    }
 
     /**
      * 解引用迭代器，获取当前指向的有序 run 中的 Tuple。
      */
-    auto operator*() -> Tuple { UNIMPLEMENTED("TODO(P3): Add implementation."); }
+    auto operator*() -> Tuple {
+      auto guard = run_->bpm_->ReadPage(run_->pages_[page_idx_]);
+      return guard.As<IntermediateResultPage>()->GetTuple(tuple_idx_);
+    }
 
     /**
      * 检查两个迭代器是否指向同一个有序 run 中的同一条 Tuple。
      */
-    auto operator==(const Iterator &other) const -> bool { UNIMPLEMENTED("TODO(P3): Add implementation."); }
+    auto operator==(const Iterator &other) const -> bool {
+      return run_ == other.run_ && page_idx_ == other.page_idx_ && tuple_idx_ == other.tuple_idx_;
+    }
 
     /**
      * 检查两个迭代器是否指向不同的 Tuple，或正在遍历不同的有序 run。
      */
-    auto operator!=(const Iterator &other) const -> bool { UNIMPLEMENTED("TODO(P3): Add implementation."); }
+    auto operator!=(const Iterator &other) const -> bool { return !(*this == other); }
 
    private:
-    explicit Iterator(const MergeSortRun *run) : run_(run) {}
+    explicit Iterator(const MergeSortRun *run, size_t page_idx = 0, uint32_t tuple_idx = 0)
+        : run_(run), page_idx_(page_idx), tuple_idx_(tuple_idx) {}
 
     /** 当前迭代器正在遍历的有序 run。 */
-    [[maybe_unused]] const MergeSortRun *run_;
-
-    /**
-     * TODO(P3): 在此添加你的私有成员变量，例如记录当前在有序 run 中的位置。
-     * 也可以按需添加额外的构造函数来初始化这些成员。
-     */
+    const MergeSortRun *run_{nullptr};
+    size_t page_idx_{0};
+    uint32_t tuple_idx_{0};
   };
 
   /**
    * 获取指向有序 run 起始位置（第一条 Tuple）的迭代器。
    */
-  auto Begin() -> Iterator { UNIMPLEMENTED("TODO(P3): Add implementation."); }
+  auto Begin() -> Iterator {
+    if (pages_.empty()) {
+      return End();
+    }
+    return Iterator{this, 0, 0};
+  }
 
   /**
    * 获取指向有序 run 末尾位置（最后一条 Tuple 之后）的迭代器。
    */
-  auto End() -> Iterator { UNIMPLEMENTED("TODO(P3): Add implementation."); }
+  auto End() -> Iterator { return Iterator{this, pages_.size(), 0}; }
+
+  /** 释放当前 run 占用的所有临时页面 */
+  void Clear() {
+    for (const auto pid : pages_) {
+      bpm_->DeletePage(pid);
+    }
+    pages_.clear();
+  }
 
  private:
   /** 存放有序 Tuple 的所有排序页的 page ID 列表。 */
@@ -92,7 +117,7 @@ class MergeSortRun {
   /**
    * 用于读取排序页的 BufferPoolManager。当排序页不再需要时，需通过它删除页面。
    */
-  [[maybe_unused]] BufferPoolManager *bpm_;
+  BufferPoolManager *bpm_{nullptr};
 };
 
 /**
@@ -121,7 +146,12 @@ class ExternalMergeSortExecutor : public AbstractExecutor {
   /** 根据 ORDER BY 子句比较 Tuple 的比较器 */
   TupleComparator cmp_;
 
-  /** TODO(P3): 在此添加你自己的私有成员变量。 */
+  /** 提供待排序 Tuple 的子执行器 */
+  std::unique_ptr<AbstractExecutor> child_executor_;
+
+  /** 最终归并完成的唯一有序 run 及遍历迭代器 */
+  std::optional<MergeSortRun> sorted_run_;
+  MergeSortRun::Iterator iter_;
 };
 
 }  // namespace bustub

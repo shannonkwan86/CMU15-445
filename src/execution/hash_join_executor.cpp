@@ -10,8 +10,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "execution/executors/hash_join_executor.h"
+#include <algorithm>
+
 #include "common/macros.h"
+#include <algorithm>
+
+#include "execution/executors/hash_join_executor.h"
 #include "type/value_factory.h"
 
 namespace bustub {
@@ -19,12 +23,7 @@ namespace bustub {
 namespace {
 
 auto HasNullKey(const HashJoinKey &join_key) -> bool {
-  for (const auto &k : join_key.keys_) {
-    if (k.IsNull()) {
-      return true;
-    }
-  }
-  return false;
+  return std::any_of(join_key.keys_.begin(), join_key.keys_.end(), [](const Value &k) { return k.IsNull(); });
 }
 
 }  // namespace

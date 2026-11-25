@@ -42,6 +42,10 @@ class InsertExecutor : public AbstractExecutor {
  private:
   /** 待执行的插入计划节点 */
   const InsertPlanNode *plan_;
+  /** 提供待插入 Tuple 的子执行器 */
+  std::unique_ptr<AbstractExecutor> child_executor_;
+  /** 标记是否已执行过插入（Insert::Next 只产出一次结果） */
+  bool is_executed_{false};
 };
 
 }  // namespace bustub

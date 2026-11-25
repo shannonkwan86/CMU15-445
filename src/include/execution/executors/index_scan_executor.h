@@ -18,6 +18,7 @@
 #include "execution/executor_context.h"
 #include "execution/executors/abstract_executor.h"
 #include "execution/plans/index_scan_plan.h"
+#include "storage/index/b_plus_tree_index.h"
 #include "storage/table/tuple.h"
 
 namespace bustub {
@@ -40,5 +41,10 @@ class IndexScanExecutor : public AbstractExecutor {
  private:
   /** 待执行的索引扫描计划节点 */
   const IndexScanPlanNode *plan_;
+  /** 索引所属的堆表信息 */
+  const TableInfo *table_info_{nullptr};
+  /** 索引扫描收集到的所有 RID 列表与当前读取下标 */
+  std::vector<RID> rids_;
+  size_t rid_idx_{0};
 };
 }  // namespace bustub

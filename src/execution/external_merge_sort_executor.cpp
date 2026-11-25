@@ -31,7 +31,8 @@ class RunWriter {
     if (!cur_guard_->AsMut<IntermediateResultPage>()->Append(tuple)) {
       cur_guard_.reset();
       AllocatePage();
-      BUSTUB_ASSERT(cur_guard_->AsMut<IntermediateResultPage>()->Append(tuple), "Tuple exceeds IntermediateResultPage");
+      const bool appended = cur_guard_->AsMut<IntermediateResultPage>()->Append(tuple);
+      BUSTUB_ENSURE(appended, "Tuple exceeds IntermediateResultPage");
     }
   }
 

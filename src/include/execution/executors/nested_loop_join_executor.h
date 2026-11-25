@@ -40,8 +40,28 @@ class NestedLoopJoinExecutor : public AbstractExecutor {
   auto GetOutputSchema() const -> const Schema & override { return plan_->OutputSchema(); };
 
  private:
+  /** 构造连接后的输出 Tuple；若 right_tuple 为 nullptr（LEFT JOIN 未匹配），右侧列填 NULL */
+  auto MakeJoinedTuple(const Tuple &left_tuple, const Tuple *right_tuple) const -> Tuple;
+
   /** 待执行的 NestedLoopJoin 计划节点 */
   const NestedLoopJoinPlanNode *plan_;
+  /** 左侧（外表）与右侧（内表）子执行器 */
+  std::unique_ptr<AbstractExecutor> left_executor_;
+  std::unique_ptr<AbstractExecutor> right_executor_;
+
+  /** 左表当前批次缓存与游标 */
+  std::vector<Tuple> left_tuples_;
+  std::vector<RID> left_rids_;
+  size_t left_idx_{0};
+
+  /** 右表当前批次缓存与游标 */
+  std::vector<Tuple> right_tuples_;
+  std::vector<RID> right_rids_;
+  size_t right_idx_{0};
+
+  /** 当前左表行是否已初始化右表扫描 / 是否至少匹配过一次右表行 */
+  bool right_initialized_{false};
+  bool left_matched_{false};
 };
 
 }  // namespace bustub

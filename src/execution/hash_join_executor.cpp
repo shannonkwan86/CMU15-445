@@ -10,12 +10,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "execution/executors/hash_join_executor.h"
+
 #include <algorithm>
+#include <utility>
+#include <vector>
 
 #include "common/macros.h"
-#include <algorithm>
-
-#include "execution/executors/hash_join_executor.h"
 #include "type/value_factory.h"
 
 namespace bustub {

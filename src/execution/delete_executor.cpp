@@ -12,6 +12,7 @@
 
 #include <memory>
 #include "common/macros.h"
+#include "type/value_factory.h"
 
 #include "execution/executors/delete_executor.h"
 
@@ -25,12 +26,13 @@ namespace bustub {
  */
 DeleteExecutor::DeleteExecutor(ExecutorContext *exec_ctx, const DeletePlanNode *plan,
                                std::unique_ptr<AbstractExecutor> &&child_executor)
-    : AbstractExecutor(exec_ctx) {
-  UNIMPLEMENTED("TODO(P3): Add implementation.");
-}
+    : AbstractExecutor(exec_ctx), plan_(plan), child_executor_(std::move(child_executor)) {}
 
 /** 初始化删除操作 */
-void DeleteExecutor::Init() { UNIMPLEMENTED("TODO(P3): Add implementation."); }
+void DeleteExecutor::Init() {
+  child_executor_->Init();
+  is_executed_ = false;
+}
 
 /**
  * 产出从表中删除的行数。
@@ -44,7 +46,41 @@ void DeleteExecutor::Init() { UNIMPLEMENTED("TODO(P3): Add implementation."); }
  */
 auto DeleteExecutor::Next(std::vector<bustub::Tuple> *tuple_batch, std::vector<bustub::RID> *rid_batch,
                           size_t batch_size) -> bool {
-  UNIMPLEMENTED("TODO(P3): Add implementation.");
+  tuple_batch->clear();
+  rid_batch->clear();
+
+  if (is_executed_) {
+    return false;
+  }
+
+  auto *catalog = exec_ctx_->GetCatalog();
+  auto table_info = catalog->GetTable(plan_->GetTableOid());
+  auto indexes = catalog->GetTableIndexes(table_info->name_);
+
+  int32_t deleted_count = 0;
+  std::vector<Tuple> child_tuples{};
+  std::vector<RID> child_rids{};
+
+  while (child_executor_->Next(&child_tuples, &child_rids, batch_size)) {
+    for (size_t i = 0; i < child_tuples.size(); ++i) {
+      const auto &tuple = child_tuples[i];
+      const auto &rid = child_rids[i];
+
+      // 1. 在堆表中将对应 RID 标记为逻辑删除（is_deleted_ = true）
+      table_info->table_->UpdateTupleMeta(TupleMeta{0, true}, rid);
+
+      // 2. 同步从表上的所有索引中删除对应键值
+      for (const auto &index_info : indexes) {
+        auto key = tuple.KeyFromTuple(table_info->schema_, index_info->key_schema_, index_info->index_->GetKeyAttrs());
+        index_info->index_->DeleteEntry(key, rid, exec_ctx_->GetTransaction());
+      }
+      ++deleted_count;
+    }
+  }
+
+  tuple_batch->emplace_back(std::vector<Value>{ValueFactory::GetIntegerValue(deleted_count)}, &GetOutputSchema());
+  is_executed_ = true;
+  return true;
 }
 
 }  // namespace bustub

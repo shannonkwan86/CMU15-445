@@ -46,5 +46,8 @@ class DeleteExecutor : public AbstractExecutor {
 
   /** 提供待删除 Tuple 的 RID 的子执行器 */
   std::unique_ptr<AbstractExecutor> child_executor_;
+
+  /** 标记是否已执行过删除（Delete::Next 只产出一次结果） */
+  bool is_executed_{false};
 };
 }  // namespace bustub

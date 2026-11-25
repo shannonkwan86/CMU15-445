@@ -39,7 +39,26 @@ class NestedIndexJoinExecutor : public AbstractExecutor {
       -> bool override;
 
  private:
+  /** 构造连接后的输出 Tuple；若 right_tuple 为 nullptr（LEFT JOIN 未匹配），右侧列填 NULL */
+  auto MakeJoinedTuple(const Tuple &left_tuple, const Tuple *right_tuple) const -> Tuple;
+
   /** 待执行的嵌套索引连接计划节点 */
   const NestedIndexJoinPlanNode *plan_;
+  /** 外表（左表）子执行器 */
+  std::unique_ptr<AbstractExecutor> child_executor_;
+  /** 内表（右表）与索引元信息 */
+  const TableInfo *inner_table_info_{nullptr};
+  const IndexInfo *index_info_{nullptr};
+
+  /** 左表当前批次缓存与游标 */
+  std::vector<Tuple> left_tuples_;
+  std::vector<RID> left_rids_;
+  size_t left_idx_{0};
+
+  /** 当前左表行在右表索引中查到的 RID 列表与遍历游标 */
+  std::vector<RID> matched_rids_;
+  size_t matched_idx_{0};
+  bool rids_fetched_{false};
+  bool left_matched_{false};
 };
 }  // namespace bustub

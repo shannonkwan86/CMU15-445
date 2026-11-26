@@ -27,7 +27,7 @@
 namespace bustub {
 
 /**
- * The optimizer takes an `AbstractPlanNode` and outputs an optimized `AbstractPlanNode`.
+ * Optimizer 接收一个 `AbstractPlanNode`，并输出优化后的 `AbstractPlanNode`。
  */
 class Optimizer {
  public:
@@ -69,8 +69,8 @@ class Optimizer {
 
   auto EstimatedCardinality(const std::string &table_name) -> std::optional<size_t>;
 
-  /** Catalog will be used during the planning process. USERS SHOULD ENSURE IT OUTLIVES
-   * OPTIMIZER; otherwise, it's a dangling reference.
+  /** Catalog 会在查询规划/优化过程中被使用。调用方需保证其生命周期长于
+   * Optimizer，否则会产生悬空引用。
    */
   const Catalog &catalog_;
 

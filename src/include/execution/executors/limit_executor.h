@@ -22,7 +22,7 @@
 namespace bustub {
 
 /**
- * LimitExecutor limits the number of output tuples produced by a child operator.
+ * LimitExecutor 限制子算子产出的输出 Tuple 总数。
  */
 class LimitExecutor : public AbstractExecutor {
  public:
@@ -34,14 +34,17 @@ class LimitExecutor : public AbstractExecutor {
   auto Next(std::vector<bustub::Tuple> *tuple_batch, std::vector<bustub::RID> *rid_batch, size_t batch_size)
       -> bool override;
 
-  /** @return The output schema for the limit */
+  /** @return Limit 算子的输出 Schema */
   auto GetOutputSchema() const -> const Schema & override { return plan_->OutputSchema(); };
 
  private:
-  /** The limit plan node to be executed */
+  /** 待执行的 Limit 计划节点 */
   const LimitPlanNode *plan_;
 
-  /** The child executor from which tuples are obtained */
+  /** 提供输入 Tuple 的子执行器 */
   std::unique_ptr<AbstractExecutor> child_executor_;
+
+  /** 已向下游产出的 Tuple 计数 */
+  size_t count_{0};
 };
 }  // namespace bustub

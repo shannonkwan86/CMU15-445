@@ -14,7 +14,7 @@
 
 namespace bustub {
 
-// Note: You can define your optimizer helper functions here
+// 提示：你可以在这里定义优化器相关的辅助函数
 void OptimizerHelperFunction();
 
 }  // namespace bustub

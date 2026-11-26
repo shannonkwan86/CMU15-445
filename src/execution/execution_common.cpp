@@ -22,21 +22,52 @@ namespace bustub {
 
 TupleComparator::TupleComparator(std::vector<OrderBy> order_bys) : order_bys_(std::move(order_bys)) {}
 
-/** TODO(P3): Implement the comparison method */
-auto TupleComparator::operator()(const SortEntry &entry_a, const SortEntry &entry_b) const -> bool { return false; }
+/** TODO(P3): 实现比较方法 */
+auto TupleComparator::operator()(const SortEntry &entry_a, const SortEntry &entry_b) const -> bool {
+  for (size_t i = 0; i < order_bys_.size(); ++i) {
+    const auto &[order_type, null_type, expr] = order_bys_[i];
+    const auto &va = entry_a.first[i];
+    const auto &vb = entry_b.first[i];
 
-/**
- * Generate sort key for a tuple based on the order by expressions.
- *
- * TODO(P3): Implement this method.
- */
-auto GenerateSortKey(const Tuple &tuple, const std::vector<OrderBy> &order_bys, const Schema &schema) -> SortKey {
-  return {};
+    const bool a_null = va.IsNull();
+    const bool b_null = vb.IsNull();
+    if (a_null && b_null) {
+      continue;
+    }
+    if (a_null || b_null) {
+      const bool nulls_first = (null_type == OrderByNullType::NULLS_FIRST) ||
+                               (null_type == OrderByNullType::DEFAULT && order_type != OrderByType::DESC);
+      return nulls_first ? a_null : b_null;
+    }
+
+    if (va.CompareEquals(vb) == CmpBool::CmpTrue) {
+      continue;
+    }
+    if (order_type == OrderByType::DESC) {
+      return va.CompareGreaterThan(vb) == CmpBool::CmpTrue;
+    }
+    return va.CompareLessThan(vb) == CmpBool::CmpTrue;
+  }
+  return false;
 }
 
 /**
- * Above are all you need for P3.
- * You can ignore the remaining part of this file until P4.
+ * 根据 ORDER BY 表达式为 Tuple 生成排序键（SortKey）。
+ *
+ * TODO(P3): 实现此方法。
+ */
+auto GenerateSortKey(const Tuple &tuple, const std::vector<OrderBy> &order_bys, const Schema &schema) -> SortKey {
+  SortKey key;
+  key.reserve(order_bys.size());
+  for (const auto &[order_type, null_type, expr] : order_bys) {
+    key.push_back(expr->Evaluate(&tuple, schema));
+  }
+  return key;
+}
+
+/**
+ * 以上是 P3 所需的全部内容。
+ * 本文件其余部分属于 P4，做 P3 时可先忽略。
  */
 
 /**

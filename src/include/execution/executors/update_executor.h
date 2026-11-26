@@ -23,8 +23,8 @@
 namespace bustub {
 
 /**
- * UpdateExecutor executes an update on a table.
- * Updated values are always pulled from a child.
+ * UpdateExecutor 对表执行更新操作。
+ * 待更新的值总是从子执行器拉取。
  */
 class UpdateExecutor : public AbstractExecutor {
   friend class UpdatePlanNode;
@@ -38,17 +38,20 @@ class UpdateExecutor : public AbstractExecutor {
   auto Next(std::vector<bustub::Tuple> *tuple_batch, std::vector<bustub::RID> *rid_batch, size_t batch_size)
       -> bool override;
 
-  /** @return The output schema for the update */
+  /** @return 更新操作的输出 Schema */
   auto GetOutputSchema() const -> const Schema & override { return plan_->OutputSchema(); }
 
  private:
-  /** The update plan node to be executed */
+  /** 待执行的更新计划节点 */
   const UpdatePlanNode *plan_;
 
-  /** Metadata identifying the table that should be updated */
+  /** 标识待更新表的元信息 */
   const TableInfo *table_info_;
 
-  /** The child executor to obtain value from */
+  /** 提供待更新记录的子执行器 */
   std::unique_ptr<AbstractExecutor> child_executor_;
+
+  /** 标记是否已执行过更新（Update::Next 只产出一次结果） */
+  bool is_executed_{false};
 };
 }  // namespace bustub
